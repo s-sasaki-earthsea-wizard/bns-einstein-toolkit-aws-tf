@@ -47,7 +47,7 @@ variable "run_mode" {
   description = <<-EOT
     What the node actually runs.
 
-      "simulation"     pull the parfile and FUKA initial data from S3 and run
+      "simulation"     pull the parfile and LORENE initial data from S3 and run
                        the Einstein Toolkit
       "ops-rehearsal"  run no physics at all: emit a synthetic checkpoint set
                        on a timer so the S3 slot rotation, the interruption

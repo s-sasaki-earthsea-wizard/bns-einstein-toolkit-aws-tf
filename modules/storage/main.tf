@@ -6,7 +6,7 @@
 # retention -- separate buckets would multiply the policy surface without
 # buying any isolation.
 #
-#   inputs/       parfile and FUKA initial data, ~1.6 MB, deliberately with no
+#   inputs/       parfile and LORENE initial data, ~12 MB, deliberately with no
 #                 lifecycle rule. Upstream gallery artefacts that cannot be
 #                 redistributed, so they are neither committed nor baked into
 #                 the container image; the node fetches them from here at boot.

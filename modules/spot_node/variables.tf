@@ -127,7 +127,7 @@ variable "run_config" {
     ecr_repository_url    where the Einstein Toolkit image is pulled from
     image_tag             tag to pull; pin to a digest for production runs
     data_bucket           S3 bucket used for checkpoints, output and artifacts
-    inputs_prefix         bucket prefix holding the parfile and FUKA initial data
+    inputs_prefix         bucket prefix holding the parfile and LORENE initial data
     run_name              prefix segment identifying this run in the bucket,
                           and the parent directory of the run inside the
                           container -- checkpoint_dir is cwd relative, so two
