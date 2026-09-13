@@ -20,31 +20,26 @@ variable "instance_type" {
   description = <<-EOT
     EC2 instance type.
 
-    Phase 4 (ops loop rehearsal): c7a.2xlarge or similar.
-    Phase 5-6 (production):       c7a.48xlarge, 192 physical cores / 384 GiB.
+    Ops loop rehearsal: c7a.2xlarge or similar.
+    Probe and production: c7a.24xlarge, 96 physical Genoa cores / 192 GiB,
+    pending the first throughput probe (see stacks/compute/variables.tf for
+    the memory case and the alternatives).
 
-    A 192 vCPU spot request is bounded by the "All Standard (A, C, D, H, I,
+    A 96 vCPU spot request is bounded by the "All Standard (A, C, D, H, I,
     M, R, T, Z) Spot Instance Requests" quota (L-34B43A08). A fresh account
-    sits far below 192; `make region-scout` reports the current value per
+    sits far below that; `make region-scout` reports the current value per
     region and prints the request command.
-
-    m7a rather than c7a because memory, not price, is the open question: the
-    reference run reports 438.5 GB across its 12 nodes, and c7a.48xlarge's
-    384 GiB is not a comfortable ceiling against that. c7a.48xlarge is 20%
-    cheaper per core and becomes the production type only once Phase 5 has
-    measured the np=192 working set well clear of 384 GiB. r7a.48xlarge
-    (1536 GiB) is the escape hatch if 768 GiB is also short.
 
     If capacity is unavailable, apply fails with InsufficientInstanceCapacity.
     Vary availability_zone first, then the instance type.
 
-    c7i.48xlarge is not an equivalent substitute despite the similar vCPU
-    count and price: 192 vCPUs there are 96 physical cores plus
-    hyperthreading, on 8 memory channels rather than 12, which works out at
-    0.0320 USD per physical core-hour against c7a's 0.0155.
+    c7i is not an equivalent substitute despite the similar vCPU count and
+    price: its vCPUs are hyperthreads on half as many physical cores, on 8
+    memory channels rather than 12, about 2x the cost per physical
+    core-hour for a bandwidth-bound evolution.
   EOT
   type        = string
-  default     = "m7a.48xlarge"
+  default     = "c7a.24xlarge"
 }
 
 variable "subnet_id" {
@@ -76,22 +71,22 @@ variable "spot_max_price" {
 variable "root_volume_size_gb" {
   description = "Size of the gp3 root volume. Working area only; the bucket is the system of record."
   type        = number
-  default     = 500
+  default     = 300
 }
 
 variable "root_volume_throughput" {
   description = <<-EOT
     gp3 throughput in MB/s, between 125 and 1000.
 
-    Sized from the Phase 2 measurement rather than a guess: a dx=28 run wrote
-    a 25 GB checkpoint, which extrapolates to 25 x (28/19.2)^3 ~ 78 GB at the
-    dx=19.2 production resolution. Reading 78 GB back for an S3 sync takes
-    10.4 minutes at the 125 MB/s baseline and 1.3 minutes at 1000 MB/s.
+    Sized for the checkpoint, which is the one large sequential write and
+    read on this volume. The GW230529 project measured its 85.7 GB
+    generation at exactly the provisioned 1000 MB/s; a BNS generation is
+    expected around 35-50 GB, so under a minute to write and to read back
+    for the S3 sync, against 5-7 minutes at the 125 MB/s baseline.
 
-    The extra 875 MB/s bills at roughly 0.048 USD/h, about 3.6 USD across a
-    76 hour run -- immaterial next to a ~3 USD/h instance, and it is the
-    difference between a sync that fits inside the interval and one that does
-    not.
+    The extra 875 MB/s bills at roughly 0.048 USD/h, a few USD across a run
+    -- immaterial next to the instance, and it is the difference between a
+    sync that fits inside the interval and one that does not.
 
     gp3 caps throughput at 0.25 MB/s per provisioned IOPS, so 1000 MB/s
     requires root_volume_iops of at least 4000.

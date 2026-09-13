@@ -136,37 +136,29 @@ variable "instance_type" {
   description = <<-EOT
     EC2 instance type.
 
-      Phase 4  c7a.2xlarge   ops rehearsal with a dummy payload, a few USD
-      Phase 5  c7a.48xlarge  full resolution, throughput measurement
-      Phase 6  c7a.48xlarge  production run
+      ops rehearsal   c7a.2xlarge    dummy payload, a few USD
+      probe / run     c7a.24xlarge   96 Genoa cores / 192 GiB, 24 ranks x 4 threads
 
-    c7a.2xlarge has 16 GiB, which is why Phase 4 runs with run_mode =
-    "ops-rehearsal" rather than a real evolution -- see that variable.
+    The gallery BNS is a small grid: about 8.3 M points on a quarter domain.
+    Its published run reports 43.8 GByte from Carpet and about 89 GiB
+    resident over 32 ranks (Teton, 2026-06-04); c7a.24xlarge holds that
+    twice over. c7a.16xlarge (64 cores / 128 GiB) fits too, more tightly,
+    and its spot pool is the calmest of the family in us-west-2.
+    c7a.48xlarge is not needed for memory, and at 192 pure-MPI ranks this
+    grid would be ghost-zone dominated -- the GW230529 run, at a similar
+    points-per-rank count, paid +95% on total over active points.
 
-    Memory was the open question and it is now measured, not projected. A
-    full resolution 192 rank run at 8 refinement levels reported 125.273
-    GByte from Carpet and 136 GiB across the whole node, on 2026-08-20. That
-    is 35% of c7a.48xlarge's 384 GiB, which settles what the reference run's
-    438.5 GB across 12 nodes and 480 ranks left ambiguous: that figure is a
-    scheduler's high water mark over a decomposition duplicating far more
-    ghost zones, not a floor on what 192 ranks need.
+    None of this is measured on this project yet. The throughput probe in
+    terraform.tfvars.example is what turns this default into a decision;
+    until then it is the GW230529 design with the size turned down.
 
-    So c7a.48xlarge, which is 20% cheaper per physical core -- 113-226 USD
-    over the estimated run length against 142-285. m7a.48xlarge (768 GiB) is
-    the fallback if a merger-time regrid turns out to grow the working set by
-    more than the 2.8x headroom, and r7a.48xlarge (1536 GiB) behind it.
-
-    Do NOT substitute c7i.48xlarge on price. Its 192 vCPUs are 96 physical
-    Sapphire Rapids cores plus hyperthreading, against 192 real cores with
-    SMT disabled on c7a, and it has 8 memory channels against 12 -- 0.0320
-    USD per physical core-hour against c7a's 0.0155, for a bandwidth-bound
+    Do NOT substitute c7i on price. 96 physical Sapphire Rapids cores plus
+    hyperthreading on 8 memory channels, against real Genoa cores on 12, is
+    about 2x the cost per physical core-hour for a bandwidth-bound
     evolution.
-
-    Nor a smaller size: c7a.24xlarge holds 192 GiB, which no full resolution
-    run fits into, and costs 31% more per physical core than the 48xlarge.
   EOT
   type        = string
-  default     = "c7a.48xlarge"
+  default     = "c7a.24xlarge"
 }
 
 variable "availability_zone" {
@@ -194,18 +186,21 @@ variable "root_volume_size_gb" {
   description = <<-EOT
     Size of the gp3 root volume.
 
-    A full resolution checkpoint measured 85.7 GB on 2026-08-20 -- 192 files,
-    one per rank. At checkpoint_generations_kept = 2 that is 171 GB resident,
-    leaving roughly 320 GB for diagnostic output at the 500 GB default.
-    Revisit if the output volume turns out larger.
+    Not measured for this project yet. Checkpoint size scales with the
+    grid-function point count Carpet reports -- 5488M total for the gallery
+    run at 32 ranks, against 13215M for the GW230529 run whose checkpoint
+    measured 85.7 GB -- so a BNS generation should land around 35-50 GB
+    depending on the rank count. At checkpoint_generations_kept = 2 that is
+    under 100 GB resident, leaving about 200 GB for output at the 300 GB
+    default. Measure it on the first probe and adjust.
 
-    The headroom depends on the sidecar pruning, not on the parfile. Phase 2
-    found IO::checkpoint_keep prunes within a run but not across restarts, so
-    an unpruned volume reaches six generations and 468 GB after a few resumes
-    and the run then dies for want of space.
+    The headroom depends on the sidecar pruning, not on the parfile. The
+    GW230529 project found IO::checkpoint_keep prunes within a run but not
+    across restarts, so an unpruned volume fills after a few resumes and
+    the run then dies for want of space.
   EOT
   type        = number
-  default     = 500
+  default     = 300
 }
 
 variable "root_volume_throughput" {
@@ -240,14 +235,17 @@ variable "image_tag" {
 
 variable "run_name" {
   description = <<-EOT
-    Identifier for this run. It is both the top-level prefix in the data
-    bucket and the parent directory of the run inside the container.
+    Identifier for this run. It is both the second path element in the data
+    bucket (checkpoints/<run_name>/, output/<run_name>/, ...) and the parent
+    directory of the run inside the container.
 
-    The parent directory matters: the gallery parfile sets
-    `IO::checkpoint_dir = "../CHECKPOINTS"`, which resolves relative to the
-    run's working directory. Two runs sharing a parent would share a
-    checkpoint directory, and `recover = "autoprobe"` would happily restart a
-    dx=19.2 run from a dx=28 checkpoint. Include the resolution in the name.
+    The parent directory matters: the cloud parfile sets
+    `IO::checkpoint_dir = "../CHECKPOINTS"` (upload_inputs.sh rewrites the
+    gallery's `$parfile` to that), which resolves relative to the run's
+    working directory. Two runs sharing a parent would share a checkpoint
+    directory, and `recover = "autoprobe"` would happily restart one run
+    from another's checkpoint. Put the resolution and the end point in the
+    name, e.g. prod-dx8-2500m.
   EOT
   type        = string
   default     = "run-dev"
@@ -255,16 +253,16 @@ variable "run_name" {
 
 variable "inputs_prefix" {
   description = <<-EOT
-    Bucket prefix holding the parfile and the FUKA initial data.
+    Bucket prefix holding the parfile and the LORENE initial data.
 
     These are Einstein Toolkit gallery artefacts, not redistributable, so they
-    are neither committed nor baked into the container image -- the simulation
-    repository keeps them under a gitignored `upstream/` and excludes them from
-    the Docker build context. The node fetches them from the private bucket at
-    boot instead. Upload them with `make upload-inputs`.
+    are neither committed nor baked into the container image. `make
+    fetch-inputs` downloads them into a gitignored `upstream/`, `make
+    upload-inputs` derives the cloud parfile and puts both in the bucket,
+    and the node fetches them from there at boot.
 
-    Four files, 1.6 MB total: the parfile, the FUKA .info and .dat, and the
-    polytrope EOS table.
+    Two files, about 12 MB: the derived parfile and the decompressed LORENE
+    Bin_NS data set (G2_I12vs12_D4R33T21_45km.resu).
   EOT
   type        = string
   default     = "inputs"
@@ -275,32 +273,54 @@ variable "parfile" {
     Parameter file name inside inputs_prefix.
 
     The uploaded copy must already carry the spot-oriented settings; the node
-    does not rewrite it:
+    rewrites only the path to the initial data:
 
       IO::checkpoint_ID                   = "yes"
       IO::checkpoint_every_walltime_hours = 1.0
       IO::checkpoint_keep                 = 2
       IO::recover                         = "autoprobe"
+      IO::checkpoint_dir / recover_dir    = "../CHECKPOINTS"
+      TerminationTrigger::max_walltime    = <a number, not @WALLTIME_HOURS@>
+      HTTPD                               not active
 
-    `checkpoint_ID = "yes"` is the important one. Phase 2 measured the FUKA
-    initial data import at 24.9 minutes locally, and it parallelises only over
-    MPI ranks. Without an initial-data checkpoint every spot interruption pays
-    that cost again.
+    `make upload-inputs` derives all of that from the gallery file and
+    refuses to upload if any of it is missing. `checkpoint_ID = "yes"` is
+    the important one: without an initial-data checkpoint every spot
+    interruption re-imports the LORENE data and redoes the iteration 0
+    setup before evolution resumes. How long that takes on this instance
+    is not measured yet (the gallery log is unstamped); it is one of the
+    numbers the first probe is for.
   EOT
   type        = string
-  default     = "bhns_bns.par"
+  default     = "bns.par"
 }
 
 variable "mpi_procs" {
-  description = "MPI ranks. The reference run is pure MPI at np=256, OMP=1."
+  description = <<-EOT
+    MPI ranks. The gallery runs this parfile hybrid -- 32 ranks x 24 threads
+    on Teton, 32 x 4 on Frontera. 24 ranks x 4 threads fills c7a.24xlarge's
+    96 cores in the Frontera shape; use 16 on c7a.16xlarge, 48 on
+    c7a.48xlarge. mpi_procs x omp_threads should equal the physical core
+    count (SMT is off on c7a).
+  EOT
   type        = number
-  default     = 192
+  default     = 24
 }
 
 variable "omp_threads" {
-  description = "OpenMP threads per rank."
+  description = <<-EOT
+    OpenMP threads per rank. 4 matches the gallery's Frontera configuration;
+    GRHydro and ML_BSSN both parallelise over threads, so this is a real
+    choice rather than a placeholder. 1 gives the pure-MPI shape the
+    GW230529 run used, at the cost of more ghost zones on a grid this small.
+
+    Thread placement is not configured in the launcher yet -- mpirun.mpich
+    is invoked without binding flags and OMP_PROC_BIND is unset. Until that
+    is measured (see the issue tracker), treat any hybrid throughput figure
+    as a lower bound.
+  EOT
   type        = number
-  default     = 1
+  default     = 4
 }
 
 variable "sync_interval_minutes" {

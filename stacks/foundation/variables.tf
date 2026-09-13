@@ -107,13 +107,13 @@ variable "alert_email" {
 variable "budget_limit_usd" {
   description = "Total project spend cap in USD."
   type        = number
-  default     = 300
+  default     = 200
 }
 
 variable "budget_thresholds_usd" {
   description = "Absolute USD alert thresholds, ascending."
   type        = list(number)
-  default     = [50, 100, 150, 200, 250, 300]
+  default     = [25, 50, 75, 100, 150, 200]
 }
 
 variable "budget_period_start" {

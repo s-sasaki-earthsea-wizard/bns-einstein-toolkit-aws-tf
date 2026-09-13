@@ -6,11 +6,15 @@ aws_region = "us-west-2"
 # Public subnets, most preferred zone first. The compute stack picks its
 # subnet by zone name, so every zone worth failing over to has to be here.
 #
-# Measured 2026-08-19 with `make region-scout`, target 192 vCPU:
+# The GW230529 project measured these on 2026-08-19 for a 192 vCPU
+# c7a.48xlarge request:
 #   us-west-2d  usw2-az4  score 9  c7a.48xlarge 2.97 USD/h   <- preferred
 #   us-west-2a  usw2-az2  score 9  c7a.48xlarge 3.05 USD/h
 #   us-west-2c  usw2-az3  score 9  c7a.48xlarge 3.32 USD/h
 #   us-west-2b  usw2-az1  unscored                           <- omitted
+# That is a starting point, not this project's answer: re-run the scout for
+# the 96 vCPU c7a.24xlarge request before relying on the order. Subnets are
+# free, so listing a zone costs nothing.
 #
 # Zone names are per-account aliases for the zone ids, so re-run the scout
 # rather than copying these names into another account. Appending a zone is
@@ -27,8 +31,10 @@ data_bucket_name = "bns-data-CHANGEME"
 alert_email = "you@example.com"
 
 # Total project cap and the absolute USD thresholds that trigger an alert.
-budget_limit_usd      = 300
-budget_thresholds_usd = [50, 100, 150, 200, 250, 300]
+# The run itself is estimated at 40-135 USD until the probe says otherwise;
+# 200 leaves room for the probe, a relaunch or two, and storage.
+budget_limit_usd      = 200
+budget_thresholds_usd = [25, 50, 75, 100, 150, 200]
 
 # Nominal anchor of the annual budget period. The cap is a project total
 # spanning several months, not a monthly allowance.
@@ -37,7 +43,7 @@ budget_thresholds_usd = [50, 100, 150, 200, 250, 300]
 # instead, while storing the value unchanged so no drift ever shows. If this
 # account carried spend earlier in the same year, that spend counts against
 # every threshold above -- set preexisting_spend_usd to cancel it out.
-budget_period_start = "2026-08-01_00:00"
+budget_period_start = "2026-09-01_00:00"
 
 # Account spend already booked this calendar year before the project began.
 # Added to the cap and to every threshold, so both keep reading as project
@@ -46,12 +52,19 @@ budget_period_start = "2026-08-01_00:00"
 #   aws ce get-cost-and-usage --time-period Start=<Jan 1> ,End=<project start> \
 #     --granularity MONTHLY --metrics UnblendedCost
 #
+# This account also carries the GW230529 project, whose 2026 spend -- and the
+# ~140 USD of unrelated spend before it -- sits inside the same calendar
+# year and counts against every threshold here until the tag filter below
+# is active. Measure, do not guess.
+#
 # Reset to 0 when the calendar year rolls over, or if a cost filter is enabled.
 preexisting_spend_usd = 0
 
 # Leave the tag filter unset until `Project` has been activated as a cost
 # allocation tag in the Billing console. An unactivated tag filter matches
-# nothing, and a budget that matches nothing never alerts.
+# nothing, and a budget that matches nothing never alerts. With two projects
+# in one account, activating it is also what stops each project's budget
+# from counting the other's spend.
 # cost_allocation_tag = { key = "Project", value = "bns" }
 
 # Only used to scope the read-only observer role's access to the state bucket.

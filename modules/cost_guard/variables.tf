@@ -18,7 +18,7 @@ variable "alert_email" {
 variable "budget_limit_usd" {
   description = "Total project spend cap in USD. Used as the budget amount and the forecast threshold."
   type        = number
-  default     = 300
+  default     = 200
 }
 
 variable "budget_thresholds_usd" {
@@ -28,7 +28,7 @@ variable "budget_thresholds_usd" {
     as many budgets as needed.
   EOT
   type        = list(number)
-  default     = [50, 100, 150, 200, 250, 300]
+  default     = [25, 50, 75, 100, 150, 200]
 }
 
 variable "budget_period_start" {

@@ -10,145 +10,78 @@ foundation_state = {
 }
 
 # ------------------------------------------------------------------
-# Phase 4: ops loop rehearsal -- slot rotation, interruption, restore
+# Ops loop rehearsal -- slot rotation, interruption, restore
 #
-# No physics. c7a.2xlarge has 16 GiB and the Phase 2 measurements leave no
-# resolution that both fits and runs: dx=28 needs 37.1 GB, dx=33.6 needs
-# 21-26 GB, and dx=67.2 fits but NaNs on the first evolution step because the
-# refinement boxes lose too many cells. The synthetic payload exercises every
-# operational path that Phase 4 exists to test, for a few dollars.
+# No physics, no inputs, no image pull. A synthetic payload exercises every
+# operational path -- sidecar sync, slot rotation, the CURRENT marker, the
+# spot flush, the restore -- for a few dollars on a small instance. Inherited
+# from the GW230529 project unchanged; run it once on a fresh account to
+# prove the plumbing before any billing-sized node.
 # ------------------------------------------------------------------
 run_mode             = "ops-rehearsal"
 instance_type        = "c7a.2xlarge"
-run_name             = "phase4-opsloop"
+run_name             = "opsloop"
 mpi_procs            = 8
-rehearsal_payload_gb = 25
+rehearsal_payload_gb = 10
 root_volume_size_gb  = 100
 
 # Two things get rehearsed and they want different settings, so run it twice
-# rather than compromising on one profile.
-#
-# Throughput -- does a real checkpoint sync fit inside the interval? Wants the
-# 25 GB above, which is what Phase 2 measured at dx=28. Measured 2026-08-20:
-# 25 GB pushed in 28 seconds, comfortably inside a 5 minute tick.
-#
-# Pruning -- does the volume stay bounded when generations accumulate? Wants
-# many generations, and the size of each is irrelevant to the logic. Drop the
-# payload and shorten the interval and the whole thing runs in about 20
-# minutes for a few cents:
-#
-#   run_name                    = "phase4-prune"
-#   rehearsal_payload_gb        = 1
-#   rehearsal_generations       = 6
-#   sync_interval_minutes       = 2
-#
-# Use a fresh run_name for it. Reusing one means the node restores that run's
-# CURRENT at boot, which is a different test and muddles this one.
+# rather than compromising on one profile: a realistic payload to see the
+# sync fit inside the interval, and many small generations to see pruning
+# keep the volume bounded (rehearsal_payload_gb = 1, rehearsal_generations
+# = 6, sync_interval_minutes = 2, under a fresh run_name).
 rehearsal_generations       = 5
 checkpoint_generations_kept = 2
 
 # ------------------------------------------------------------------
-# Phase 5 memory probe: does the working set fit on one node?
+# Throughput probe: what does this grid actually cost on this instance?
 #
-# The go/no-go question does not need a long run to answer. Carpet prints its
-# grid structure statistics before the initial data import starts -- about two
-# minutes after the container comes up -- and the last line of that block is
-# the whole answer:
-#
-#   INFO (Carpet): Total required memory: 42.347 GByte (for GAs and currently
-#                  active GFs)
-#
-# Measured at dx=28, np=32 on 2026-08-20, against 43-44 GiB observed for the
-# whole node, so Carpet's figure plus roughly 5 GB of MPI buffers, HDF5 and OS
-# is what the machine actually holds.
-#
-# So: launch, wait for the line to reach s3://<bucket>/<run>/logs/bootstrap.log,
-# and `make stop`. Seven minutes and under half a dollar, against two hours and
-# 7.5 USD for a run that reports the same number on its way past.
-#
-# sync_interval_minutes = 1 because the answer is wanted immediately and the
-# instance is billing while nothing else happens. root_volume_size_gb is small
-# because nothing gets checkpointed. auto_shutdown stays true so a probe that
-# is walked away from still ends.
-#
-# The same block also carries the ghost zone overhead -- "owned (+74%), total
-# (+68%)" at np=32 -- which is what an extrapolation to another rank count
-# turns on. Two probes at different np are cheaper than trusting the formula.
-# ------------------------------------------------------------------
-# run_mode              = "simulation"
-# instance_type         = "m7a.48xlarge"
-# run_name              = "phase5-memprobe-dx19p2"
-# mpi_procs             = 192
-# root_volume_size_gb   = 100
-# sync_interval_minutes = 1
-
-# ------------------------------------------------------------------
-# Phase 5 throughput probe: how fast does full resolution actually run?
-#
-# Measured 2026-08-21: 4.16 sec/iter at dt = 0.06 M, from a 90 minute run that
-# reached t = 62.94 M in 1049 iterations. Carpet's own physical_time_per_hour
-# read 54.06 M/h over the same window, agreeing with the wall clock to 3.9%.
-# The probe cost about 5.2 USD and settled a 226 USD question.
-#
-# Repeat it when something changes that could move the rate -- a different
-# instance type, a different rank count, a rebuilt image -- or to see what the
-# merger costs once the production run is near t = 713 M.
-#
-# Production settings throughout, with one change: the parfile terminates on
-# wall clock instead of on a physical time it will never reach.
+# NOT YET RUN. Everything numeric about the BNS on AWS is an estimate until
+# it is: sec/iter, memory, checkpoint size, the LORENE import time, the cold
+# start. The gallery's own run (Teton, 2 nodes / 768 cores as 32 ranks x 24
+# threads, 2026-06-04) took 10 h 33 min to t = 2500 with 43.8 GByte from
+# Carpet and ~89 GiB resident; its older Frontera figure is 30 h on 128
+# cores. Scaled to one c7a.24xlarge those bracket roughly 20-60 hours, and
+# the probe is what collapses that to a number.
 #
 #   make upload-probe PROBE_MINUTES=90
 #
 # writes Cactus::terminate = "runtime" and Cactus::max_runtime = 90 into
-# bhns_bns_probe.par and uploads it. The cap is the cost guard -- nothing
-# else here bounds how long a run bills for, since auto_shutdown fires when
-# the run exits and the production parfile does not exit for days.
+# bns_probe.par and uploads it. The cap is the cost guard -- nothing else
+# bounds how long a run bills for, since auto_shutdown fires when the run
+# exits and the production parfile does not exit for a day or more.
 #
-# Ninety minutes because the reading has to settle. Carpet averages its own
-# figure over ten wall clock minutes, the first iterations of any run are
-# dominated by things that happen once, and the hourly checkpoint has to fall
-# inside the window: the seconds it stops every rank are part of what a
-# production hour costs. Roughly 105 minutes of instance time all told, about
-# 5 USD, against a 226 USD question.
+# Ninety minutes because the reading has to settle: the first minutes are
+# dominated by things that happen once, and the hourly checkpoint has to
+# fall inside the window. About 105 minutes of instance time, 3-4 USD.
 #
-# Nothing about the checkpointing is switched off to make the probe look
-# faster. It writes an initial data checkpoint, an hourly one, and one on
-# termination -- 85.7 GB each -- so the volume needs the production 500 GB and
-# the run leaves a full resolution restart point behind in the bucket.
-#
-# Read the answer with `make throughput`, which parses the run log directly.
+# Read the answer with `make throughput`. Then read Carpet's "Total required
+# memory" and "GF: vars" lines out of the log, and the checkpoint size out
+# of `aws s3 ls`, and write all three into the instance_type decision.
+# Repeat on c7a.16xlarge (mpi_procs = 16) if the 24xlarge number is
+# comfortable: it is the calmest spot pool of the family in us-west-2.
 # ------------------------------------------------------------------
 # run_mode            = "simulation"
-# instance_type       = "c7a.48xlarge"
-# run_name            = "phase5-throughput-dx19p2"
-# parfile             = "bhns_bns_probe.par"
-# mpi_procs           = 192
-# root_volume_size_gb = 500
+# instance_type       = "c7a.24xlarge"
+# run_name            = "probe-dx8-c7a24"
+# parfile             = "bns_probe.par"
+# image_tag           = "sha256:CHANGEME"
+# mpi_procs           = 24
+# omp_threads         = 4
+# root_volume_size_gb = 300
 
 # ------------------------------------------------------------------
-# Phase 5-6: full resolution
+# Production: the gallery BNS to t = 2500
 #
-# Requires `make upload-inputs` first -- the parfile and FUKA initial data are
-# fetched from the bucket, not baked into the image. Put the resolution in
-# run_name: checkpoint_dir is cwd relative, so runs sharing a parent directory
-# would let recover=autoprobe pick up the wrong resolution's checkpoint.
+# Requires `make upload-inputs` first -- the parfile and the LORENE data are
+# fetched from the bucket, not baked into the image. Put the resolution and
+# the end point in run_name: checkpoint_dir is cwd relative, so runs sharing
+# a parent directory would let recover=autoprobe pick up the wrong run's
+# checkpoint.
 #
-# c7a.48xlarge, on a measurement rather than a projection. The full
-# resolution probe of 2026-08-20 reported 125.273 GByte from Carpet and 136
-# GiB across the node at np=192 -- 35% of this instance's 384 GiB. The
-# reference run's 438.5 GB is a scheduler high water mark over 480 ranks on
-# 12 nodes, a decomposition that duplicates far more ghost zones than one
-# node at 192 does. m7a.48xlarge (768 GiB) remains the fallback.
-#
-# One checkpoint generation measured 85.7 GB, so keep = 2 holds 171 GB of the
-# 500 GB volume and leaves the rest for diagnostic output.
-#
-# Expect 33.7 hours and ~100 USD to the production end point of t = 1750 M,
-# at the 4.16 sec/iter measured on 2026-08-21 -- but that was measured over
-# t = 0-63 M, which is pure inspiral. The merger at t ~ 713 M is not in it
-# (the dx=28 dry run crossed its merger with no visible slowdown, so this is
-# a residual risk rather than an expected cost). Run `make throughput`
-# against the live log every so often rather than assuming the rate holds.
+# 24 ranks x 4 threads is the gallery's Frontera shape on 96 cores. The
+# instance type is a placeholder for the probe's answer; the memory case
+# for it is in variables.tf.
 #
 # Pin image_tag to the digest, not "latest". A node relaunched after a spot
 # interruption re-pulls the reference it was configured with, and a mutable
@@ -156,25 +89,26 @@ checkpoint_generations_kept = 2
 # description shows the command that reads it.
 # ------------------------------------------------------------------
 # run_mode            = "simulation"
-# instance_type       = "c7a.48xlarge"
-# run_name            = "prod-dx19p2-1750m"
-# parfile             = "bhns_bns.par"
+# instance_type       = "c7a.24xlarge"
+# run_name            = "prod-dx8-2500m"
+# parfile             = "bns.par"
 # image_tag           = "sha256:CHANGEME"
-# mpi_procs           = 192
-# root_volume_size_gb = 500
+# mpi_procs           = 24
+# omp_threads         = 4
+# root_volume_size_gb = 300
 
 # ------------------------------------------------------------------
 # Availability zone
 # ------------------------------------------------------------------
-# Zone NAMES are shuffled per AWS account; zone IDs are not. Re-run
-# `make region-scout` to get this account's mapping and its current placement
-# scores before pinning a value.
+# Zone NAMES are shuffled per AWS account; zone IDs are not. Run
+# `make region-scout` for this account's mapping and current placement
+# scores before pinning a value -- the GW230529 project's scout was for a
+# 192 vCPU c7a.48xlarge request and does not transfer to a 96 vCPU one.
 #
-# Measured 2026-08-19, target 192 vCPU, all three candidate types:
-#   us-west-2d  usw2-az4  score 9  c7a.48xlarge 2.97 USD/h   <- preferred
-#   us-west-2a  usw2-az2  score 9  c7a.48xlarge 3.05 USD/h
-#   us-west-2c  usw2-az3  score 9  c7a.48xlarge 3.32 USD/h
-#   us-west-2b  usw2-az1  unscored
+# Spot Advisor, us-west-2, 2026-09-13 (savings vs on-demand / interruption
+# frequency): c7a.16xlarge 63% / 5-10%, c7a.24xlarge 62% / >20%,
+# c7a.48xlarge 69% / 10-15%. Frequency bands, not prices; the scout prints
+# the price.
 #
 # The zone has to be one the foundation stack put a subnet in: this stack
 # looks the subnet up by zone name, so a zone missing from foundation's
@@ -183,7 +117,7 @@ checkpoint_generations_kept = 2
 # Null uses foundation's first subnet, which is the first entry of that list
 # and therefore the preferred zone -- but say it explicitly for a production
 # run, so the intent survives a change to the foundation stack.
-availability_zone = "us-west-2d"
+# availability_zone = "us-west-2d"
 
 # The run switch. `make run` and `make stop` flip this from the command line;
 # leaving it false here means a bare `terraform apply` never starts billing.
