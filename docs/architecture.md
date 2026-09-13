@@ -1,33 +1,45 @@
 # Architecture
 
-Cloud execution environment for the BNS merger simulation
-(Phases 4–6 of the [simulation
-repository](https://github.com/s-sasaki-earthsea-wizard/gw230529-einstein-toolkit)).
+Cloud execution environment for the Einstein Toolkit gallery's [binary
+neutron star example](https://einsteintoolkit.org/gallery/bns/index.html),
+on the design that carried the [GW230529 BH-NS
+simulation](https://github.com/s-sasaki-earthsea-wizard/gw230529-einstein-toolkit-aws-tf)
+to completion in August 2026.
+
+**Provenance.** This document was written for GW230529 and imported. The
+topology, the stack split, the checkpoint slots, the sidecar and the cost
+containment carry over unchanged; the measurements that justify their sizing
+— memory, checkpoint size, sec/iter, cold start — are GW230529's and are kept
+as the evidence behind the design, labelled as such. Nothing has been measured
+for the BNS on AWS yet. Its numbers, and the band they currently sit in, are
+in the README's *The simulation* and *Cost model* sections; the first
+throughput probe replaces them.
 
 Constraints that shaped every decision:
 
-- **300 USD total budget.** Anything that bills by the hour while idle is out.
-- **Single spot node.** No multi-node, no EFA. The reference run is 480 ranks
-  of pure MPI across 12 nodes, about 14,600 core-hours to the target evolution
-  time; 192 physical cores on one machine is the closest single-node
-  equivalent, at 38–76 hours. Whether the working set fits in one node is
-  decided by Phase 5, not assumed here.
+- **200 USD total budget** (300 for GW230529). Anything that bills by the hour
+  while idle is out.
+- **Single spot node.** No multi-node, no EFA. The gallery's own run of this
+  parfile is 32 MPI ranks; a 96-core c7a.24xlarge at 24 ranks × 4 threads is
+  the closest single-node shape, and the grid — about 8.3 M points on a
+  quarter domain — is small enough that going wider mostly buys ghost zones.
 - **S3 is the system of record.** EBS is scratch. A spot interruption must
   never lose more than one sync interval of work.
-- **No inbound ports.** Operations go through SSM Session Manager.
+- **No inbound ports.** Operations go through SSM Session Manager. The
+  gallery parfile's HTTPD is dropped for the same reason.
 
 ## Resource topology
 
 ```mermaid
 flowchart LR
   subgraph LOCAL["Local workstation"]
-    IMG["Einstein Toolkit image<br/>Kruskal + Fuka + Boost"]
+    IMG["Einstein Toolkit image<br/>Kruskal + NSTracker"]
     TFCLI["terraform CLI"]
     FIG["figure retrieval<br/>MB scale only"]
   end
 
   subgraph GLOBAL["us-east-1 : global service endpoints"]
-    BUDGET["AWS Budgets x2<br/>190 / 240 / 290 / 340 / 390 / 440 USD<br/>(calendar-year totals; see cost guard)"]
+    BUDGET["AWS Budgets x2<br/>25 / 50 / 75 / 100 / 150 / 200 USD<br/>(+ preexisting spend; calendar-year totals)"]
     ANOM["Cost Anomaly Detection"]
     CTOPIC["SNS: cost alerts"]
   end
@@ -51,7 +63,7 @@ flowchart LR
       GWEP["S3 gateway endpoint"]
       SG["security group<br/>no inbound rules"]
       subgraph SUBNETS["public subnets, one per AZ"]
-        EC2["EC2 spot instance<br/>m7a / c7a .48xlarge, gp3 500 GB"]
+        EC2["EC2 spot instance<br/>c7a.24xlarge pending the probe, gp3 300 GB"]
       end
     end
 
@@ -90,6 +102,15 @@ keeps sync traffic off the internet gateway entirely, which also removes any
 path to an accidental egress charge.
 
 ## Region and instance selection
+
+> **GW230529 measurement record.** This section and the two that follow —
+> *Choosing the instance type*, *What the run will cost* — are the sibling
+> project's, kept verbatim as the evidence behind the design. For the BNS
+> the region choice stands (nothing about it depended on the instance size),
+> the instance type is c7a.24xlarge pending the first probe, and the cost
+> band is in the README. The scout has to be re-run for a 96 vCPU request
+> before any of the zone ordering below is relied on.
+
 
 The region is effectively permanent — ECR images and S3 objects are
 region-bound, so moving means re-pushing 4.06 GB and re-uploading every result.
@@ -350,13 +371,22 @@ sequenceDiagram
 ```
 
 The interruption path deliberately does **not** ask Cactus for a fresh
-checkpoint. Phase 2 measured a 25 GB checkpoint at dx=28, which extrapolates
-to about 78 GB at production resolution — minutes to write and minutes more to
-upload, against a two minute warning. Attempting it would risk the flush of
-the checkpoint that already exists. The recovery point is the last checkpoint
-that finished uploading.
+checkpoint. GW230529's generations were 85.7 GB — minutes to write and
+minutes more to upload, against a two minute warning — and attempting one
+would have risked the flush of the checkpoint that already existed. A BNS
+generation is expected around 35–50 GB: under a minute to write at the
+provisioned 1000 MB/s, but still minutes to upload, so the recovery point
+stays the last checkpoint that finished uploading. Whether the write alone
+now fits inside the warning — the cloud parfile keeps TerminationTrigger's
+termination-file hook, so the watcher could request one — is worth
+measuring; see the issue tracker.
 
 ## Checkpoint synchronisation
+
+> Sizes in this section are GW230529's (78 GB designed, 85.7 GB measured per
+> generation). A BNS generation is expected at roughly half that; the
+> mechanism is unchanged.
+
 
 Two properties matter more than the sync interval, and both come from the
 78 GB figure.
@@ -437,58 +467,60 @@ and worth knowing:
 
 ## What the node needs that the image does not carry
 
-The parfile and the FUKA initial data are Einstein Toolkit gallery artefacts
-and are not redistributable. The simulation repository keeps them in a
-gitignored `upstream/`, and excludes that directory from the Docker build
-context, so they exist locally only because the whole repository is bind
-mounted — a mount source no cloud instance has.
-
-Four files, 1.6 MB, therefore live under `inputs/` in the data bucket and are
-fetched at boot. Baking them into the image would also put upstream
-copyrighted data inside ECR, where a mis-set repository visibility becomes a
-licensing problem rather than an inconvenience.
+The parfile and the LORENE initial data are Einstein Toolkit gallery
+artefacts and are not redistributable. Two files, 12 MB, therefore live under
+`inputs/` in the data bucket and are fetched at boot. Baking them into the
+image would also put upstream copyrighted data inside ECR, where a mis-set
+repository visibility becomes a licensing problem rather than an
+inconvenience.
 
 `make fetch-inputs` downloads them from the gallery against pinned SHA-256
-sums, into a gitignored `upstream/`. Fetching rather than reaching into the
-simulation repository's checkout is what lets a standalone clone of this
-repository do a production run; it also starts from the pristine `.info`,
-whose EOS path is still the upstream `/path/to/` placeholder the node's
-boot-time rewrite is written against, rather than from a copy with some
-other machine's absolute path already edited in.
+sums, into a gitignored `upstream/`, and decompresses the LORENE data set
+there — LORENE reads the `.resu` directly, and doing it locally keeps `xz`
+out of the node's boot path. The gallery's thornlist is fetched alongside,
+because it is the record of the one thorn the release manifest lacks
+(NSTracker) and where it comes from.
 
 `make upload-inputs` derives the cloud parfile rather than uploading the
-gallery one unchanged. The gallery file targets COSMA8, whose jobs are capped
-at 30 hours, so its 29 hour checkpoint interval costs nothing there and would
-cost 14.5 hours of lost work per interruption here. Two settings are rewritten
-and two are asserted:
+gallery one unchanged. The gallery file targets a batch queue under
+simfactory; seven things change:
 
 ```
-IO::checkpoint_every_walltime_hours   29 -> 1.0    rewritten
-IO::checkpoint_ID                 absent -> "yes"  rewritten (the default is "no")
-IO::recover                         = "autoprobe"  asserted
-IO::checkpoint_keep                 = 2            asserted
+IO::checkpoint_every_walltime_hours   absent   -> 1.0             rewritten
+IO::checkpoint_keep                   absent   -> 2               rewritten (the default is 1)
+IO::checkpoint_dir                    $parfile -> "../CHECKPOINTS" rewritten
+IO::recover_dir                       $parfile -> "../CHECKPOINTS" rewritten
+TerminationTrigger::max_walltime      @WALLTIME_HOURS@ -> 8760    rewritten (a simfactory placeholder)
+HTTPD, Socket                         active   -> dropped         segfaults in the container without a socket
+IO::checkpoint_ID                     = "yes"                     asserted
+IO::recover                           = "autoprobe"               asserted
 ```
 
-The two asserted settings the gallery already gets right; checking them anyway
-means an upstream change surfaces at upload time rather than at 3 USD/hour.
-Nothing is uploaded unless all four hold — a `sed` that silently matches
+Nothing is uploaded unless every check holds — a `sed` that silently matches
 nothing is the failure this is guarding against, the same hazard the node
-guards against when it aborts on a failed `eosfile` rewrite.
+guards against when it aborts on a failed initial-data path rewrite. When the
+BNS image is on the machine, Cactus itself is then asked to check the file
+(`--exit-after-param-check`), which is how the HTTPD crash was found: the
+thorn fails to bind its socket inside the container and Carpet aborts.
 
-`checkpoint_ID` is the one that matters most. Phase 2 measured the FUKA
-initial data import at 24.9 minutes locally, and it parallelises only over MPI
-ranks — there is no OpenMP path. Without an initial-data checkpoint, every
-spot interruption pays that cost again before evolution resumes.
+`checkpoint_ID` is the one that matters most. Without an initial-data
+checkpoint, every spot interruption re-imports the LORENE data and redoes the
+iteration 0 setup before evolution resumes. How long that takes on this
+instance is not known — the gallery log is unstamped — and is one of the
+numbers the first probe is for; GW230529's equivalent was 18 minutes, of which
+the import itself was only a third.
 
-The FUKA `.info` file also carries an absolute path to the EOS table, shipped
-upstream as the literal placeholder `/path/to/`. The node rewrites it to the
-mount point at boot and aborts if the rewrite does not take, rather than
-letting the run fail later on a missing table.
+The parfile names the LORENE data set by absolute path — whatever machine the
+gallery example was last run from. The node rewrites the directory to its own
+mount point at boot, keeps only the basename, checks the file is actually
+there, and aborts if any of that fails rather than letting the run die later
+on a missing file.
 
 ### Where checkpoints land
 
-The parfile sets `IO::checkpoint_dir = "../CHECKPOINTS"`, relative to the
-run's working directory. With a run directory of
+The cloud parfile sets `IO::checkpoint_dir = "../CHECKPOINTS"` (the gallery's
+`$parfile` is rewritten by `make upload-inputs`), relative to the run's
+working directory. With a run directory of
 `/home/etuser/simulations/<run_name>/run`, checkpoints resolve to
 `/home/etuser/simulations/<run_name>/CHECKPOINTS`, so the bind mount is placed
 there and the parfile is left alone:
@@ -504,17 +536,21 @@ The checkpoint mount nests inside the simulations mount, which keeps the two
 separate on the host — that separation is what lets the sidecar rotate
 checkpoints through slots while pushing output additively. The output sync
 also excludes `*/CHECKPOINTS/*` so that a missing inner mount costs a warning
-rather than a second 78 GB upload.
+rather than a second upload of every checkpoint.
 
 Because `checkpoint_dir` is relative, two runs sharing a parent directory
 share a checkpoint directory, and `recover = "autoprobe"` would restart one
 resolution from another's checkpoint. `run_name` is the parent directory, so
 it should name the resolution.
 
-## Phase 4 runs no physics
+## The ops rehearsal runs no physics
 
-Phase 4 exists to prove the operations loop. The Phase 2 measurements say a
-cheap instance cannot also do physics:
+`run_mode = "ops-rehearsal"` exists to prove the operations loop on a cheap
+instance. For GW230529 that was forced — no resolution of that grid both fit
+16 GiB and ran, as the table below records — and it holds for the BNS as
+well: the gallery run's ~89 GiB at 32 ranks does not fit a c7a.2xlarge
+either, and a coarser BNS grid would hit the same box-size floor. The
+rehearsal stays synthetic. The GW230529 table, for the record:
 
 | Grid | Memory | Fits 16 GiB? |
 | --- | --- | --- |
@@ -536,7 +572,7 @@ with. Slot rotation, the `CURRENT` marker, the interruption flush and the
 restore path all get exercised, on a c7a.2xlarge, and interruptions can be
 triggered as often as they are useful.
 
-The physics waits for Phase 5 on the real machine.
+The physics waits for the probe on the real machine.
 
 ## Cost containment
 
@@ -556,12 +592,13 @@ and neither can prevent anything: AWS billing data lags 8–24 hours.
 
 | Hazard | Handling |
 | --- | --- |
-| ~~The np=192 working set may not fit 384 GiB~~ Settled 2026-08-20 | Measured at 136 GiB across the node, 35% of c7a.48xlarge's 384 GiB. The reference's 438.5 GB was a high water mark over 480 ranks on 12 nodes, not a floor for 192. |
-| `IO::checkpoint_keep` does not prune across runs | Phase 2 left three generations, 77 GB, after two runs. At the measured 85.7 GB each a 500 GB volume fills after five. The S3 slot rotation bounds S3 only — the sidecar has to prune EBS itself, keeping the generation `CURRENT` names plus one. |
-| Spot vCPU service quota defaults far below 192 | Raise it before Phase 5; approval takes hours to days. `make region-scout` reports the current value. |
-| `InsufficientInstanceCapacity` on a 192 vCPU request | Vary `availability_zone` first — only zones listed in foundation's `availability_zones` are reachable — then `instance_type` across m7a / c7a / r7a .48xlarge. Not c7i: it is half the machine at twice the price per real core. |
+| The BNS working set on AWS is unmeasured | The gallery's own run reports 43.8 GByte from Carpet and ~89 GiB resident at 32 ranks; c7a.24xlarge holds 192 GiB. The first probe measures it on the rank count actually used. (GW230529's equivalent question was settled at 136 GiB against 384.) |
+| `IO::checkpoint_keep` does not prune across runs | GW230529 saw three generations after two runs. The S3 slot rotation bounds S3 only — the sidecar prunes EBS itself, keeping the generation `CURRENT` names plus one. Inherited and exercised in production. |
+| Spot vCPU service quota defaults far below 96 | Raise it before the probe; approval takes hours to days. `make region-scout` reports the current value; an account that ran GW230529 already holds 256 in us-west-2. |
+| `InsufficientInstanceCapacity` on a 96 vCPU request | Vary `availability_zone` first — only zones listed in foundation's `availability_zones` are reachable — then `instance_type` across c7a.16xlarge / 24xlarge / 48xlarge. Not c7i: it is half the machine at twice the price per real core. A search over (zone, type) pairs instead of a pinned pool is an open issue inherited from GW230529. |
 | Deep Archive bills a 180 day minimum | `artifacts/` transitions after a delay, so a bad run can be deleted before it is archived. |
-| The gallery parfile is unfit for spot as shipped | `make upload-inputs` derives the cloud variant and refuses to upload one missing any of the four settings a reclaimed run needs. |
+| The gallery parfile is unfit for spot as shipped | `make upload-inputs` derives the cloud variant — seven changes, listed above — and refuses to upload one that fails any check. Cactus's own parameter check runs when the BNS image is present. |
 | SNS subscriptions start unconfirmed, and can be deleted later by one click on any unsubscribe link | Follow "Confirm subscription" in both mails after the first apply, and note that the Terraform resource survives an unsubscribe, so nothing reports the loss. `make check-alerts` tests delivery; `make run` refuses to start billing when either topic is disarmed. |
 | A budget filtered on an unactivated cost allocation tag never fires | `cost_allocation_tag` defaults to null, giving an account-wide budget. |
-| Region is effectively permanent | ECR and S3 are region-bound; re-pushing means moving 4.06 GB. Decide with `make region-scout` before the first apply. |
+| Region is effectively permanent | ECR and S3 are region-bound; re-pushing means moving ~4 GB. Decide with `make region-scout` before the first apply. |
+| Two projects share one account | The GW230529 and BNS budgets both measure account-wide spend until the `Project` cost allocation tag is activated, so each counts the other. `preexisting_spend_usd` is the stopgap; the tag is the fix. |
