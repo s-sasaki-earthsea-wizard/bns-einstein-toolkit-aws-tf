@@ -1,0 +1,61 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+# Fixed for the life of the project. Decide with `make region-scout`.
+aws_region = "us-west-2"
+
+# Public subnets, most preferred zone first. The compute stack picks its
+# subnet by zone name, so every zone worth failing over to has to be here.
+#
+# Measured 2026-08-19 with `make region-scout`, target 192 vCPU:
+#   us-west-2d  usw2-az4  score 9  c7a.48xlarge 2.97 USD/h   <- preferred
+#   us-west-2a  usw2-az2  score 9  c7a.48xlarge 3.05 USD/h
+#   us-west-2c  usw2-az3  score 9  c7a.48xlarge 3.32 USD/h
+#   us-west-2b  usw2-az1  unscored                           <- omitted
+#
+# Zone names are per-account aliases for the zone ids, so re-run the scout
+# rather than copying these names into another account. Appending a zone is
+# free; reordering the list replaces every subnet, because the CIDRs follow
+# the list positions.
+availability_zones = ["us-west-2d", "us-west-2a", "us-west-2c"]
+
+# Globally unique. A random suffix avoids collisions without exposing the
+# account id.
+data_bucket_name = "gw230529-data-CHANGEME"
+
+# Receives budget alerts, cost anomaly alerts and spot interruption warnings.
+# Each SNS topic sends a confirmation mail that has to be clicked once.
+alert_email = "you@example.com"
+
+# Total project cap and the absolute USD thresholds that trigger an alert.
+budget_limit_usd      = 300
+budget_thresholds_usd = [50, 100, 150, 200, 250, 300]
+
+# Nominal anchor of the annual budget period. The cap is a project total
+# spanning several months, not a monthly allowance.
+#
+# AWS ignores this date for an ANNUALLY budget and measures the calendar year
+# instead, while storing the value unchanged so no drift ever shows. If this
+# account carried spend earlier in the same year, that spend counts against
+# every threshold above -- set preexisting_spend_usd to cancel it out.
+budget_period_start = "2026-08-01_00:00"
+
+# Account spend already booked this calendar year before the project began.
+# Added to the cap and to every threshold, so both keep reading as project
+# spend. Measure it with:
+#
+#   aws ce get-cost-and-usage --time-period Start=<Jan 1> ,End=<project start> \
+#     --granularity MONTHLY --metrics UnblendedCost
+#
+# Reset to 0 when the calendar year rolls over, or if a cost filter is enabled.
+preexisting_spend_usd = 0
+
+# Leave the tag filter unset until `Project` has been activated as a cost
+# allocation tag in the Billing console. An unactivated tag filter matches
+# nothing, and a budget that matches nothing never alerts.
+# cost_allocation_tag = { key = "Project", value = "gw230529" }
+
+# Only used to scope the read-only observer role's access to the state bucket.
+# Leave it commented out to fall back to the "gw230529-tfstate-*" pattern the
+# bootstrap stack creates the bucket under; set it to the name already in
+# backend.hcl to pin the grant to exactly one bucket.
+# state_bucket_name = "gw230529-tfstate-CHANGEME"

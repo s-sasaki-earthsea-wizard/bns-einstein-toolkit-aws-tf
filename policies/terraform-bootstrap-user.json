@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeTheProjectRolesWhichAreWhereEveryOtherPermissionLives",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::*:role/gw230529-terraform-operator",
+        "arn:aws:iam::*:role/gw230529-observer"
+      ]
+    },
+    {
+      "Sid": "ManageOwnAccessKeysBecauseRotationMustNotNeedAnAdministrator",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAccessKeys",
+        "iam:CreateAccessKey",
+        "iam:UpdateAccessKey",
+        "iam:DeleteAccessKey",
+        "iam:GetAccessKeyLastUsed"
+      ],
+      "Resource": "arn:aws:iam::*:user/gw230529"
+    },
+    {
+      "Sid": "ReadOwnMfaDeviceSoTheProfileCanBeConfigured",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListMFADevices",
+        "iam:GetUser"
+      ],
+      "Resource": "arn:aws:iam::*:user/gw230529"
+    }
+  ]
+}

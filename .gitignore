@@ -1,0 +1,75 @@
+# ============================================================
+# Terraform
+# ============================================================
+# State is remote (S3); never track it. Bootstrap keeps a local state file.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Variable files hold the AWS account id, bucket names and the alert address.
+# Only the *.example templates are tracked.
+*.tfvars
+*.tfvars.json
+
+# Partial backend configuration (state bucket name / key / region).
+backend.hcl
+
+# Local overrides.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored. It pins provider
+# checksums and contains no account-specific data -- commit it.
+
+# ============================================================
+# Local configuration and credentials
+# ============================================================
+.env
+*.pem
+*.ppk
+
+# ============================================================
+# Upstream Einstein Toolkit gallery artefacts
+# ============================================================
+# Fetched by `make fetch-inputs`, never committed. They are upstream material
+# that this project uses but does not redistribute; the repository keeps only
+# the URLs and their checksums, in scripts/fetch_inputs.sh.
+upstream/
+
+# ============================================================
+# Claude session notes (not versioned)
+# ============================================================
+.claude-notes/
+
+# ============================================================
+# Misc
+# ============================================================
+.DS_Store
+*.plan
+plan.out
+
+# ============================================================
+# Post-processing data and rendered outputs
+# ============================================================
+# results/ holds the synced copy of the run's S3 output (make fetch-results)
+# and, once packed, its tar.gz (make pack-results): ~10 GB of simulation
+# data either way, never repository material. postprocessing/out/ holds the
+# rendered figures and the movie; they are derived, and the talk repository
+# is where chosen ones get committed.
+results/
+postprocessing/out/
+
+# ============================================================
+# Relaunch loop runtime files (scripts/relaunch_until_done.sh)
+# ============================================================
+# The stop file is a human override checked before every launch; the state
+# file records why the loop last stopped (#25). Both are per-machine runtime
+# state: committed by accident, a stale stop file would halt every fresh
+# clone's loop on its first iteration.
+.relaunch-stop
+.relaunch-state
