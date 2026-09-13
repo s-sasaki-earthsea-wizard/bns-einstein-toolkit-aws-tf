@@ -1,8 +1,8 @@
-# GW230529 Einstein Toolkit — AWS Infrastructure (Terraform)
+# BNS Einstein Toolkit — AWS Infrastructure (Terraform)
 
 ## プロジェクト概要
 
-[gw230529-einstein-toolkit](../gw230529-einstein-toolkit) の **Phase 4–6
+[bns-einstein-toolkit](../bns-einstein-toolkit) の **Phase 4–6
 (クラウド実行)** を担う sibling repo。EC2 spot ノード 1 台、S3 (成果物の正本)、
 ECR (ET イメージ配布)、およびコストガードレールを Terraform で管理する。
 
@@ -13,7 +13,7 @@ ECR (ET イメージ配布)、およびコストガードレールを Terraform 
 
 | 論点 | 決定 | 理由 |
 | --- | --- | --- |
-| repo 名 | `gw230529-einstein-toolkit-aws-tf` | 本体 repo の sibling |
+| repo 名 | `bns-einstein-toolkit-aws-tf` | 本体 repo の sibling |
 | 公開範囲 | public。アカウント固有値は gitignore + `.example` | Q7 |
 | リージョン | 起動ごとの選択はしない。**1 回決めて固定** | ECR/S3 がリージョン束縛。移動 = 4.06 GB 再 push |
 | リージョン | **us-west-2 に確定 (2026-08-19 実測)** | 下記「リージョン選定の実測結果」 |
@@ -66,7 +66,7 @@ foundation の変数として渡す方式に変更。`az_count` は null 時の�
 
 ### インスタンス選定の再評価 (2026-08-20)
 
-sibling repo が公開リファレンス出力 (`bhns_gw230529.out` の Carpet ログと
+sibling repo が公開リファレンス出力 (`bhns_bns.out` の Carpet ログと
 SLURM エピローグ) を直読みして数値を訂正した。**本 repo が使っていた
 「256 コア / 30 時間 / 140 GB」は 3 つとも誤り**だった。
 
@@ -166,7 +166,7 @@ per-core 同等なら 76 時間、Genoa は 1.5–2 倍と見て下限 38 時間
 
 ### Phase 5 スループット実測 (2026-08-21、np=192 フル解像度)
 
-**コスト見積り最後の外挿が消えた。** `bhns_gw230529_probe.par`
+**コスト見積り最後の外挿が消えた。** `bhns_bns_probe.par`
 (production と同一設定 + `Cactus::terminate = "runtime"` /
 `Cactus::max_runtime = 90`) を c7a.48xlarge / us-west-2d で 90 分回した。
 run_name `phase5-throughput-dx19p2`、t=0 → 62.94 M (iteration 1049)。
@@ -393,7 +393,7 @@ sibling repo の Phase 1 (Docker ビルド) / Phase 2 (ローカル smoke) か�
 run_mode            = "simulation"
 instance_type       = "c7a.48xlarge"
 run_name            = "prod-dx19p2-1750m"
-parfile             = "bhns_gw230529.par"
+parfile             = "bhns_bns.par"
 image_tag           = "sha256:<digest>"   # 必ず digest で pin
 mpi_procs           = 192
 root_volume_size_gb = 500
@@ -401,7 +401,7 @@ sync_interval_minutes = 5
 availability_zone   = "us-west-2d"
 ```
 
-digest は `aws ecr describe-images --repository-name gw230529/einstein-toolkit
+digest は `aws ecr describe-images --repository-name bns/einstein-toolkit
 --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text`。
 **tag ではなく digest なのは、中断→再起動でタグが動いていると別ビルドに
 checkpoint を restore してしまうため。**
@@ -412,10 +412,10 @@ checkpoint を restore してしまうため。**
 
 ```bash
 env -u AWS_SESSION_TOKEN -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  make throughput AWS_PROFILE=gw230529-observer     # sec/iter とコスト投影
-  make validate-run AWS_PROFILE=gw230529-observer   # リファレンスとの照合
-  make ledger AWS_PROFILE=gw230529-observer         # 稼働率とダウンタイム
-  make heartbeat AWS_PROFILE=gw230529-observer      # メモリとディスク
+  make throughput AWS_PROFILE=bns-observer     # sec/iter とコスト投影
+  make validate-run AWS_PROFILE=bns-observer   # リファレンスとの照合
+  make ledger AWS_PROFILE=bns-observer         # 稼働率とダウンタイム
+  make heartbeat AWS_PROFILE=bns-observer      # メモリとディスク
 ```
 
 budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、240 で約 28.7 h)。
@@ -465,7 +465,7 @@ budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、
   同じ dx=28 でも np=16 の 25 GB に対し np=32 は 30.1 GB で、rank 数が効く。
   正しい検算は **GF total 点数の比**を使うこと (解像度比だけの外挿は誤り、
   ghost 増分を別に掛けるのは二重計上になる)
-- **IAM ユーザー `gw230529` に `policies/terraform-operator.json` を付与する**
+- **IAM ユーザー `bns` に `policies/terraform-operator.json` を付与する**
   【2026-08-20 完了: `make check-permissions` で 109/109 allowed を確認済み】
 
   経緯 (2026-08-19〜20):
@@ -478,13 +478,13 @@ budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、
      `make check-permissions-policy` で **109/109 allowed** を確認済み
 
   設計上の要点:
-  - スコープ可能なサービスは `gw230529-*` で絞る (S3 / ECR / IAM / SNS /
+  - スコープ可能なサービスは `bns-*` で絞る (S3 / ECR / IAM / SNS /
     EventBridge / Budgets / SSM パラメータ)
   - **EC2 は名前でスコープできない**。ARN にプロジェクト名が入らないため、
     `arn:aws:ec2:*:*:*/*` のようなパターンは**全 EC2 リソースにマッチする**。
     「絞ったつもり」が一番危ない
   - 代わりに**破壊的 EC2 アクションに tag 条件付きの明示 Deny** を置く。
-    `aws:ResourceTag/Project != gw230529` なら explicitDeny。
+    `aws:ResourceTag/Project != bns` なら explicitDeny。
     provider の `default_tags` が全リソースに Project を打つので自分のものは
     消せる。検証済み: 自分=allowed / タグ無し=explicitDeny / 他=explicitDeny
   - `ce:*` / Session Manager / `ec2:GetSpotPlacementScores` などは
@@ -497,13 +497,13 @@ budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、
 
     | 材料 | 現状 |
     | --- | --- |
-    | `iam:CreateRole` on `role/gw230529-*` | Allow、条件なし |
-    | `iam:AttachRolePolicy` on `role/gw230529-*` | Allow、**`iam:PolicyARN` 条件なし** |
-    | `iam:PutRolePolicy` on `role/gw230529-*` | Allow、条件なし |
-    | `iam:PassRole` on `role/gw230529-*` | Allow、条件なし |
+    | `iam:CreateRole` on `role/bns-*` | Allow、条件なし |
+    | `iam:AttachRolePolicy` on `role/bns-*` | Allow、**`iam:PolicyARN` 条件なし** |
+    | `iam:PutRolePolicy` on `role/bns-*` | Allow、条件なし |
+    | `iam:PassRole` on `role/bns-*` | Allow、条件なし |
     | `ec2:*` on `*` | Allow、条件なし |
 
-    `gw230529-*` という名前の role を作り、`AdministratorAccess` を
+    `bns-*` という名前の role を作り、`AdministratorAccess` を
     アタッチし (**アタッチ先の role は絞られているが、アタッチする policy は
     絞られていない**)、`RunInstances` で EC2 に渡して IMDS から資格情報を読む。
     `DenyDestructiveEc2OnForeignResources` は破壊的アクションしか見ていないので
@@ -542,11 +542,11 @@ budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、
 採用した構成:
 
 ```
-[profile gw230529-bootstrap]   静的キー。単体では何もできない
-[profile gw230529]             role_arn + mfa_serial + source_profile
+[profile bns-bootstrap]   静的キー。単体では何もできない
+[profile bns]             role_arn + mfa_serial + source_profile
 ```
 
-- role `gw230529-terraform-operator` は **`stacks/bootstrap`** が持つ。
+- role `bns-terraform-operator` は **`stacks/bootstrap`** が持つ。
   foundation/compute はこの role で apply されるので、そこに置くと
   「自分を作る権限を自分が与える」循環になる。bootstrap が state をローカルに
   置いているのと同じ理由
@@ -585,7 +585,7 @@ budget アラートは run 中に 2 発鳴る想定 (190 で約 11.9 h 時点、
 区別するための `DescribeInstances`。どれも operator role は要らないのに、
 毎回 MFA デバイスを持つ人間に中継させていた。
 
-`stacks/foundation` が `gw230529-observer` を作る。同じ IAM user が principal、
+`stacks/foundation` が `bns-observer` を作る。同じ IAM user が principal、
 **MFA 条件なし**、権限は read のみ。
 
 | | scope |
@@ -626,7 +626,7 @@ checkpoint、foundation/compute の state が読める。作れず・変えら�
 使えない (spend できない) のは変わらない。
 
 **`terraform-bootstrap-user.json` は 2 本の ARN を明示列挙に変えた** (#8 step 2 が
-まだ未適用なので、順序問題は発生しない)。`role/gw230529-*` のワイルドカードは
+まだ未適用なので、順序問題は発生しない)。`role/bns-*` のワイルドカードは
 使わない — それは #8 step 3 のエスカレーション形状そのもの。
 
 **ただし同一アカウントではこの列挙は「意図の記録」であって効力ではない可能性が
@@ -634,7 +634,7 @@ checkpoint、foundation/compute の state が読める。作れず・変えら�
 `sts:AssumeRole` は不要で、その証拠がこの repo にある:
 `policies/terraform-operator.json` には `sts:` のアクションが 1 つも無いのに
 `make login` は通っている。確認は
-`aws iam list-attached-user-policies --user-name gw230529` と
+`aws iam list-attached-user-policies --user-name bns` と
 `list-user-policies` の 2 発。
 
 **検証結果 (2026-08-26)**:
@@ -657,7 +657,7 @@ checkpoint、foundation/compute の state が読める。作れず・変えら�
   ものが物理的に存在しない。証明を取るなら operator で捨てオブジェクトを 1 つ
   置いて読み失敗させる (+ version ごと消す) 必要がある。優先度低
 
-**`AWS_PROFILE=gw230529-observer` は operator セッションに負ける。**
+**`AWS_PROFILE=bns-observer` は operator セッションに負ける。**
 `tf.mk` の `ifdef AWS_SESSION_TOKEN → unexport AWS_PROFILE` があるので、
 `eval "$(make login)"` 済みのシェルでは環境の一時資格情報が使われる。
 operator は observer にできることを全部できるので **エラーにならず、
@@ -666,14 +666,14 @@ observer を検証したつもりが operator で通る**。検証は必ず素�
 
 ### budget の集計期間は暦年だった (2026-08-27 判明)
 
-**`gw230529-01` の 150 USD 超過通知は誤報だった。** 通知時点のプロジェクト
+**`bns-01` の 150 USD 超過通知は誤報だった。** 通知時点のプロジェクト
 支出は **17.34 USD**。鳴らせたのは、このプロジェクトが生まれる前の
 アカウント支出 137.32 USD の方。
 
 | 期間 | 額 | 中身 |
 | --- | --- | --- |
 | 2026-01-01 〜 08-18 | **137.32** | 前プロジェクトの NAT GW 59 + RDS 49 + Tax 等。4 月に撤去済み |
-| 2026-08-19 〜 08-26 (gw230529) | **17.34** | EC2 12.96 / S3 / ECR |
+| 2026-08-19 〜 08-26 (bns) | **17.34** | EC2 12.96 / S3 / ECR |
 | 合計 | 154.66 | = 通知の `ACTUAL Amount` と一致 |
 
 **原因は AWS の 2 つの挙動が重なったこと:**
@@ -926,7 +926,7 @@ OpenCAE 講演用の図と動画。**Lambda 案は実測で棄却した** — �
 ### 上流ギャラリー成果物の扱い (2026-08-20 決定)
 
 parfile と FUKA 初期データ (4 ファイル 1.6 MB) は **本 repo が自分で取得する**。
-以前は `INPUTS_DIR` が `../gw230529-einstein-toolkit/upstream` を指していたが、
+以前は `INPUTS_DIR` が `../bns-einstein-toolkit/upstream` を指していたが、
 これだと**本 repo を単独 clone したマシンで production run ができない**うえ、
 その依存がどこにも宣言されていなかった。
 

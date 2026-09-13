@@ -21,7 +21,7 @@ data "aws_region" "current" {}
 
 resource "aws_launch_template" "node" {
   name        = "${var.name_prefix}-node"
-  description = "GW230529 Einstein Toolkit spot compute node"
+  description = "BNS Einstein Toolkit spot compute node"
 
   image_id      = data.aws_ssm_parameter.al2023.value
   instance_type = var.instance_type

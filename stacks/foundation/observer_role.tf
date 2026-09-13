@@ -9,7 +9,7 @@
 # test was read-only: reading the CURRENT marker, listing a checkpoint slot,
 # fetching the bootstrap log while the run was in flight, `make throughput`,
 # `make heartbeat`, and DescribeInstances to tell "finished" from "stuck".
-# None of it needs gw230529-terraform-operator, and every one of those calls
+# None of it needs bns-terraform-operator, and every one of those calls
 # had to be relayed to a human holding an MFA device.
 #
 # WHY NOT credential_process WITH A STORED TOTP SEED
@@ -45,7 +45,7 @@ locals {
   # expose to the configuration, so pinning it exactly means repeating it as
   # a variable. Null falls back to the pattern stacks/bootstrap creates it
   # under -- a wildcard that would matter only if a second bucket were ever
-  # named gw230529-tfstate-something.
+  # named bns-tfstate-something.
   state_bucket_arn = (
     var.state_bucket_name != null
     ? "arn:aws:s3:::${var.state_bucket_name}"
@@ -84,11 +84,11 @@ data "aws_iam_policy_document" "observer_assume_role" {
 }
 
 resource "aws_iam_role" "observer" {
-  # Has to keep the gw230529- prefix: policies/terraform-bootstrap-user.json
+  # Has to keep the bns- prefix: policies/terraform-bootstrap-user.json
   # names this ARN literally, and the operator policy scopes iam:CreateRole to
-  # role/gw230529-*, so a name outside the prefix cannot be created at all.
+  # role/bns-*, so a name outside the prefix cannot be created at all.
   name               = "${var.name_prefix}-observer"
-  description        = "Read-only role for watching a GW230529 run. No MFA, by design."
+  description        = "Read-only role for watching a BNS run. No MFA, by design."
   assume_role_policy = data.aws_iam_policy_document.observer_assume_role.json
 
   # The AWS default of one hour, deliberately left alone. The operator role

@@ -65,7 +65,7 @@ data "aws_iam_policy_document" "operator_assume_role" {
 
 resource "aws_iam_role" "operator" {
   name               = var.operator_role_name
-  description        = "Role a human assumes to run Terraform for GW230529. MFA required."
+  description        = "Role a human assumes to run Terraform for BNS. MFA required."
   assume_role_policy = data.aws_iam_policy_document.operator_assume_role.json
 
   # Seconds. The AWS range is 3600 to 43200. Eight hours covers a working day

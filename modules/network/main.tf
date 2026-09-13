@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 Syota Sasaki
 #
-# Network layer for the GW230529 spot compute node.
+# Network layer for the BNS spot compute node.
 #
 # Design note -- why a public subnet:
 #   The node needs outbound access for the SSM agent (443) and inbound access
@@ -114,7 +114,7 @@ data "aws_region" "current" {}
 # is an outbound-initiated connection.
 resource "aws_security_group" "node" {
   name        = "${var.name_prefix}-node"
-  description = "GW230529 compute node: outbound only, no inbound"
+  description = "BNS compute node: outbound only, no inbound"
   vpc_id      = aws_vpc.this.id
 
   tags = {

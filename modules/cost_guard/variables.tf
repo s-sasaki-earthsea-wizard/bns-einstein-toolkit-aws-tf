@@ -78,7 +78,7 @@ variable "preexisting_spend_usd" {
 
 variable "cost_allocation_tag" {
   description = <<-EOT
-    Optional cost allocation tag filter, as { key = "Project", value = "gw230529" }.
+    Optional cost allocation tag filter, as { key = "Project", value = "bns" }.
 
     Leave this null. A tag filter only matches once the tag has been activated
     in the Billing console AND enough time has passed for it to appear in the

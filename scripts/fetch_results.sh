@@ -12,7 +12,7 @@
 #
 # Read-only, so the observer profile works and no MFA session is needed:
 #
-#   make fetch-results AWS_PROFILE=gw230529-observer
+#   make fetch-results AWS_PROFILE=bns-observer
 #
 # With no argument the prefix is derived from the compute stack's
 # run_log_url output. Deriving it beats adding an output_prefix output to
@@ -35,7 +35,7 @@ if [ -z "${PREFIX}" ]; then
   LOG_URL="$(${TF} -chdir=stacks/compute output -raw run_log_url 2>/dev/null || true)"
   if [ -z "${LOG_URL}" ]; then
     echo "the compute stack's run_log_url could not be read." >&2
-    echo "Is there a session? Try AWS_PROFILE=gw230529-observer in a shell" >&2
+    echo "Is there a session? Try AWS_PROFILE=bns-observer in a shell" >&2
     echo "with no operator session, or pass the prefix directly:" >&2
     echo "  scripts/fetch_results.sh s3://<bucket>/output/<run_name>/" >&2
     exit 1

@@ -20,7 +20,7 @@ variable "default_tags" {
   type        = map(string)
 
   default = {
-    Project   = "gw230529"
+    Project   = "bns"
     ManagedBy = "terraform"
   }
 }
@@ -35,19 +35,19 @@ variable "operator_user_name" {
     key a nuisance rather than an incident.
   EOT
   type        = string
-  default     = "gw230529"
+  default     = "bns"
 }
 
 variable "operator_role_name" {
   description = <<-EOT
     Name of the role that carries policies/terraform-operator.json.
 
-    It has to match the `gw230529-*` prefix that policy scopes IAM to, or the
+    It has to match the `bns-*` prefix that policy scopes IAM to, or the
     role will not be able to manage the project's own roles and instance
     profiles.
   EOT
   type        = string
-  default     = "gw230529-terraform-operator"
+  default     = "bns-terraform-operator"
 }
 
 variable "operator_session_seconds" {

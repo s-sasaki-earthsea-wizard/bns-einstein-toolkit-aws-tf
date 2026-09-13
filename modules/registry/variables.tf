@@ -4,7 +4,7 @@
 variable "repository_name" {
   description = "ECR repository name holding the Einstein Toolkit image."
   type        = string
-  default     = "gw230529/einstein-toolkit"
+  default     = "bns/einstein-toolkit"
 }
 
 variable "keep_last_images" {

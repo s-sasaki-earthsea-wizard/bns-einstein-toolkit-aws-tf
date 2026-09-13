@@ -15,7 +15,7 @@ variable "aws_region" {
 variable "name_prefix" {
   description = "Prefix applied to every resource name."
   type        = string
-  default     = "gw230529"
+  default     = "bns"
 }
 
 variable "default_tags" {
@@ -23,7 +23,7 @@ variable "default_tags" {
   type        = map(string)
 
   default = {
-    Project   = "gw230529"
+    Project   = "bns"
     ManagedBy = "terraform"
   }
 }
@@ -87,7 +87,7 @@ variable "artifacts_deep_archive_after_days" {
 variable "ecr_repository_name" {
   description = "ECR repository holding the Einstein Toolkit image."
   type        = string
-  default     = "gw230529/einstein-toolkit"
+  default     = "bns/einstein-toolkit"
 }
 
 variable "ecr_keep_last_images" {
@@ -149,7 +149,7 @@ variable "observer_user_name" {
     names the principal is sufficient on its own.
   EOT
   type        = string
-  default     = "gw230529"
+  default     = "bns"
 }
 
 variable "state_bucket_name" {

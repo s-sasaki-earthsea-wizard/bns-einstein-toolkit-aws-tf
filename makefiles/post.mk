@@ -6,7 +6,7 @@
 # copy of the S3 output. Everything here is read-only towards AWS, so the
 # observer profile is enough for the one target that talks to it at all:
 #
-#   make fetch-results AWS_PROFILE=gw230529-observer
+#   make fetch-results AWS_PROFILE=bns-observer
 #   make postproc-image
 #   make figures
 #   make movie
@@ -18,7 +18,7 @@
 # pinned Docker image so the figures reproduce months later; the scripts are
 # bind mounted, so editing one never requires an image rebuild.
 
-POSTPROC_IMAGE ?= gw230529-postproc:local
+POSTPROC_IMAGE ?= bns-postproc:local
 RESULTS_ROOT := results
 
 # The run to process: the sole directory under results/, override with

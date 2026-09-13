@@ -11,7 +11,7 @@ variable "default_tags" {
   type        = map(string)
 
   default = {
-    Project   = "gw230529"
+    Project   = "bns"
     ManagedBy = "terraform"
   }
 }
@@ -230,7 +230,7 @@ variable "image_tag" {
     Pin production runs to the digest -- a node relaunched after a spot
     interruption re-pulls this reference, and a mutable tag can have moved
     under it mid-run. Read the digest with:
-      aws ecr describe-images --repository-name gw230529/einstein-toolkit \
+      aws ecr describe-images --repository-name bns/einstein-toolkit \
         --image-ids imageTag=latest \
         --query 'imageDetails[0].imageDigest' --output text
   EOT
@@ -288,7 +288,7 @@ variable "parfile" {
     that cost again.
   EOT
   type        = string
-  default     = "bhns_gw230529.par"
+  default     = "bhns_bns.par"
 }
 
 variable "mpi_procs" {

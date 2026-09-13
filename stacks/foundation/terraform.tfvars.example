@@ -20,7 +20,7 @@ availability_zones = ["us-west-2d", "us-west-2a", "us-west-2c"]
 
 # Globally unique. A random suffix avoids collisions without exposing the
 # account id.
-data_bucket_name = "gw230529-data-CHANGEME"
+data_bucket_name = "bns-data-CHANGEME"
 
 # Receives budget alerts, cost anomaly alerts and spot interruption warnings.
 # Each SNS topic sends a confirmation mail that has to be clicked once.
@@ -52,10 +52,10 @@ preexisting_spend_usd = 0
 # Leave the tag filter unset until `Project` has been activated as a cost
 # allocation tag in the Billing console. An unactivated tag filter matches
 # nothing, and a budget that matches nothing never alerts.
-# cost_allocation_tag = { key = "Project", value = "gw230529" }
+# cost_allocation_tag = { key = "Project", value = "bns" }
 
 # Only used to scope the read-only observer role's access to the state bucket.
-# Leave it commented out to fall back to the "gw230529-tfstate-*" pattern the
+# Leave it commented out to fall back to the "bns-tfstate-*" pattern the
 # bootstrap stack creates the bucket under; set it to the name already in
 # backend.hcl to pin the grant to exactly one bucket.
-# state_bucket_name = "gw230529-tfstate-CHANGEME"
+# state_bucket_name = "bns-tfstate-CHANGEME"

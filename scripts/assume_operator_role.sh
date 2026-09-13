@@ -37,7 +37,7 @@ cd "${REPO_ROOT}"
 # The profile carrying role_arn and mfa_serial. The static access key lives in
 # its source_profile and, once the user policy is narrowed, can do nothing
 # except assume this role and rotate itself.
-PROFILE="${OPERATOR_PROFILE:-${AWS_PROFILE:-gw230529}}"
+PROFILE="${OPERATOR_PROFILE:-${AWS_PROFILE:-bns}}"
 DURATION="${SESSION_SECONDS:-28800}"
 
 conf() { aws configure get "$1" --profile "${PROFILE}" 2>/dev/null || true; }

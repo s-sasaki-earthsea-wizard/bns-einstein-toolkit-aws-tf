@@ -7,19 +7,19 @@ nothing to authenticate with.
 
 | File | Attached to | By |
 | --- | --- | --- |
-| `terraform-operator.json` | the `gw230529-terraform-operator` **role** | `stacks/bootstrap`, which reads this file |
-| `terraform-bootstrap-user.json` | the `gw230529` **user** | an administrator, by hand |
+| `terraform-operator.json` | the `bns-terraform-operator` **role** | `stacks/bootstrap`, which reads this file |
+| `terraform-bootstrap-user.json` | the `bns` **user** | an administrator, by hand |
 
 `terraform-bootstrap-user.json` narrows the user to two things: assuming the
 project's roles, and rotating its own access key. It names both roles
 explicitly —
 
 ```
-arn:aws:iam::*:role/gw230529-terraform-operator
-arn:aws:iam::*:role/gw230529-observer
+arn:aws:iam::*:role/bns-terraform-operator
+arn:aws:iam::*:role/bns-observer
 ```
 
-— and not `role/gw230529-*`. A wildcard there would recreate the escalation
+— and not `role/bns-*`. A wildcard there would recreate the escalation
 shape this whole arrangement is about: create a role whose name starts with
 the prefix, attach more to it, assume it.
 
@@ -29,7 +29,7 @@ policy that names its principal is sufficient on its own — which is why
 `make login` succeeds today against a user policy containing no `sts:` action
 at all. The list is here to state the intent, not to carry it.)
 
-The read-only `gw230529-observer` role itself is not in this directory. It is
+The read-only `bns-observer` role itself is not in this directory. It is
 created by `stacks/foundation`, with its policy written inline as a Terraform
 document, because unlike the two above nothing about it needs an
 administrator or a simulation before attachment.
@@ -51,17 +51,17 @@ Both must end in `OK: all 115 actions permitted`.
 
 ## Scoping
 
-Resources are fenced by the `gw230529-` name prefix wherever AWS supports
+Resources are fenced by the `bns-` name prefix wherever AWS supports
 resource-level permissions:
 
 | Service | Scope |
 | --- | --- |
-| S3 | `arn:aws:s3:::gw230529-*` and its objects |
-| ECR | `repository/gw230529*` |
-| IAM | `role/gw230529-*`, `instance-profile/gw230529-*` |
-| SNS | `gw230529-*` topics |
-| EventBridge | `rule/gw230529-*` |
-| Budgets | `budget/gw230529-*` |
+| S3 | `arn:aws:s3:::bns-*` and its objects |
+| ECR | `repository/bns*` |
+| IAM | `role/bns-*`, `instance-profile/bns-*` |
+| SNS | `bns-*` topics |
+| EventBridge | `rule/bns-*` |
+| Budgets | `budget/bns-*` |
 | SSM parameters | only `/aws/service/ami-amazon-latest/*`, the public AMI index |
 
 Four things cannot be scoped, and are granted on `*` deliberately:
@@ -79,10 +79,10 @@ Four things cannot be scoped, and are granted on `*` deliberately:
 ## The EC2 guard
 
 Because EC2 cannot be scoped by name, the policy carries an explicit `Deny`
-on destructive EC2 actions whose target is not tagged `Project=gw230529`:
+on destructive EC2 actions whose target is not tagged `Project=bns`:
 
 ```json
-"Condition": { "StringNotEquals": { "aws:ResourceTag/Project": "gw230529" } }
+"Condition": { "StringNotEquals": { "aws:ResourceTag/Project": "bns" } }
 ```
 
 Provider `default_tags` stamps that tag on everything this project creates,
@@ -94,7 +94,7 @@ Verified behaviour:
 
 | Target | `ec2:TerminateInstances` |
 | --- | --- |
-| `Project=gw230529` | allowed |
+| `Project=bns` | allowed |
 | tag absent | explicitDeny |
 | `Project=some-other-project` | explicitDeny |
 
@@ -106,7 +106,7 @@ principal.
 ## What this policy does not grant
 
 No `iam:AttachUserPolicy`, no `iam:CreatePolicy`, no ability to touch roles
-outside `gw230529-*`. The principal therefore cannot escalate itself to
+outside `bns-*`. The principal therefore cannot escalate itself to
 administrator, which is the property the earlier `IAMFullAccess` arrangement
 did not have.
 
@@ -114,12 +114,12 @@ did not have.
 
 ```bash
 aws iam create-policy \
-  --policy-name gw230529-terraform-operator \
+  --policy-name bns-terraform-operator \
   --policy-document file://policies/terraform-operator.json
 
 aws iam attach-user-policy \
   --user-name <operator> \
-  --policy-arn arn:aws:iam::<account-id>:policy/gw230529-terraform-operator
+  --policy-arn arn:aws:iam::<account-id>:policy/bns-terraform-operator
 
 # Detach anything it replaces, including the broad managed policies.
 aws iam list-attached-user-policies --user-name <operator>
@@ -129,7 +129,7 @@ Updating it later means creating a new policy *version*:
 
 ```bash
 aws iam create-policy-version \
-  --policy-arn arn:aws:iam::<account-id>:policy/gw230529-terraform-operator \
+  --policy-arn arn:aws:iam::<account-id>:policy/bns-terraform-operator \
   --policy-document file://policies/terraform-operator.json \
   --set-as-default
 ```

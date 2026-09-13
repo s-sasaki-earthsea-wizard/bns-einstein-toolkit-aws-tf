@@ -116,7 +116,7 @@ if [ -z "${SOURCE}" ]; then
   if [ -z "${SOURCE}" ]; then
     echo "no log given and the compute stack's run_log_url could not be read." >&2
     echo "Is there a session? Try: eval \"\$(make login)\", or" >&2
-    echo "AWS_PROFILE=gw230529-observer in a shell with no operator session." >&2
+    echo "AWS_PROFILE=bns-observer in a shell with no operator session." >&2
     echo "Or pass a path or an s3:// URL directly." >&2
     exit 1
   fi

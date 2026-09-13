@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 Syota Sasaki
 #
-# Post-processing environment for the GW230529 run output.
+# Post-processing environment for the BNS run output.
 #
 # Dependencies only -- the analysis scripts are bind mounted at run time by
 # the make targets, so editing a script never requires a rebuild. The image

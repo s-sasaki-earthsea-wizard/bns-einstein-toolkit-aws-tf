@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 Syota Sasaki
 #
-# Node bootstrap for the GW230529 Einstein Toolkit spot instance.
+# Node bootstrap for the BNS Einstein Toolkit spot instance.
 #
 # SKELETON. Steps marked TODO(phase4) are stubs to be filled in once the local
 # dx=28 run of Phase 2-3 has pinned down the actual run command and directory
@@ -53,8 +53,8 @@ stamp() {
   }'
 }
 
-exec > >(stamp | tee -a /var/log/gw230529-bootstrap.log) 2>&1
-echo "=== gw230529 bootstrap started at $(date -Is) ==="
+exec > >(stamp | tee -a /var/log/bns-bootstrap.log) 2>&1
+echo "=== bns bootstrap started at $(date -Is) ==="
 
 AWS_REGION="${aws_region}"
 RUN_MODE="${run_mode}"
@@ -80,7 +80,7 @@ CHECKPOINT_GENERATIONS_KEPT="${checkpoint_generations_kept}"
 SYNC_INTERVAL_MIN="${sync_interval_minutes}"
 AUTO_SHUTDOWN="${auto_shutdown}"
 
-WORK_DIR=/opt/gw230529
+WORK_DIR=/opt/bns
 
 # S3 keys put the category first and the run name second:
 #
@@ -122,7 +122,7 @@ C_INPUTS=/home/etuser/inputs
 
 # Absolute, because it is not on PATH. The image sets no ENV PATH beyond the
 # distribution default, so the 988 MB binary at this location is invisible to
-# a bare `cactus_sim`. Verified against gw230529-et:local on 2026-08-20.
+# a bare `cactus_sim`. Verified against bns-et:local on 2026-08-20.
 CACTUS_EXE=/home/etuser/Cactus/exe/cactus_sim
 
 export AWS_DEFAULT_REGION="$${AWS_REGION}"
@@ -318,7 +318,7 @@ echo "dropped the page cache after the restore ($(free -g | awk '/^Mem:/ {print 
 # the directories created above -- and everything the restore just wrote --
 # are root owned and mode 0755. The container would then fail on the first
 # thing the run does, which is Cactus creating IOUtil::out_dir ("./data/").
-# Verified against gw230529-et:local on 2026-08-20: uid 1000 cannot write a
+# Verified against bns-et:local on 2026-08-20: uid 1000 cannot write a
 # root owned 0755 bind mount.
 #
 # Phase 4 never hit this because the ops rehearsal writes its payload as root
@@ -372,7 +372,7 @@ fi
 # Output is pushed separately and additively: it only grows, and losing a
 # diagnostic file matters far less than losing the ability to restart.
 # ------------------------------------------------------------------
-cat > /usr/local/bin/gw230529-sync <<SYNC
+cat > /usr/local/bin/bns-sync <<SYNC
 #!/usr/bin/env bash
 set -euo pipefail
 export AWS_DEFAULT_REGION="$${AWS_REGION}"
@@ -381,7 +381,7 @@ CKPT_DIR="$${WORK_DIR}/checkpoints"
 S3_CKPT="$${S3_CKPT}"
 KEEP=$${CHECKPOINT_GENERATIONS_KEPT}
 RANKS=$${MPI_PROCS}
-STAMP=/var/lib/gw230529/last-synced-checkpoint
+STAMP=/var/lib/bns/last-synced-checkpoint
 
 # What "the checkpoint directory has not changed" means, in one place.
 #
@@ -444,7 +444,7 @@ trap 'say "tick end after \$${SECONDS}s"' EXIT
 # list the other could invalidate by pruning. Waiting rather than skipping,
 # because the direct callers are the pushes that must not be dropped: a tick
 # that queues behind the final sync finds nothing new and exits.
-exec 9>>/var/lock/gw230529-sync.lock
+exec 9>>/var/lock/bns-sync.lock
 if ! flock -n 9; then
   say "waiting for the lock held by another sync"
   flock 9
@@ -498,7 +498,7 @@ aws s3 sync "$${WORK_DIR}/simulations/$${RUN_NAME}/" "$${S3_OUTPUT}/" \
 #   aws s3 ls <log_prefix> | sort | tail -1
 #
 # Never fatal: a missing log is not a reason to abandon a checkpoint push.
-aws s3 cp /var/log/gw230529-bootstrap.log \
+aws s3 cp /var/log/bns-bootstrap.log \
   "$${S3_LOGS}/bootstrap-$${INSTANCE_ID}.log" \
   --only-show-errors || true
 
@@ -587,27 +587,27 @@ say "CURRENT is now \$${target}"
 # difference and pushing the same generations again.
 write_stamp
 SYNC
-chmod +x /usr/local/bin/gw230529-sync
+chmod +x /usr/local/bin/bns-sync
 
 # Tell the sidecar that what the restore brought down is already in S3, before
 # the timer starts. Only after a restore: with no CURRENT marker the
 # checkpoint directory is empty and there is nothing to describe.
 if [ -n "$${CURRENT_SLOT}" ]; then
-  /usr/local/bin/gw230529-sync --stamp-only
+  /usr/local/bin/bns-sync --stamp-only
 fi
 
-cat > /etc/systemd/system/gw230529-sync.service <<UNIT
+cat > /etc/systemd/system/bns-sync.service <<UNIT
 [Unit]
-Description=Sync GW230529 checkpoints and output to S3
+Description=Sync BNS checkpoints and output to S3
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/gw230529-sync
+ExecStart=/usr/local/bin/bns-sync
 UNIT
 
-cat > /etc/systemd/system/gw230529-sync.timer <<UNIT
+cat > /etc/systemd/system/bns-sync.timer <<UNIT
 [Unit]
-Description=Periodic S3 sync for the GW230529 run
+Description=Periodic S3 sync for the BNS run
 
 [Timer]
 OnBootSec=$${SYNC_INTERVAL_MIN}min
@@ -624,7 +624,7 @@ UNIT
 # TODO(phase4): publish physical_time parsed from the Cactus stdout alongside
 # the memory figures, so run progress is visible without opening a session.
 # ------------------------------------------------------------------
-cat > /usr/local/bin/gw230529-heartbeat <<HB
+cat > /usr/local/bin/bns-heartbeat <<HB
 #!/usr/bin/env bash
 set -euo pipefail
 export AWS_DEFAULT_REGION="$${AWS_REGION}"
@@ -640,20 +640,20 @@ jq -n \
   '{timestamp: \$ts, instance_id: \$iid, memory: \$mem, disk_used: \$disk}' \
   | aws s3 cp - "$${S3_HEARTBEAT}/latest.json" --only-show-errors
 HB
-chmod +x /usr/local/bin/gw230529-heartbeat
+chmod +x /usr/local/bin/bns-heartbeat
 
-cat > /etc/systemd/system/gw230529-heartbeat.service <<UNIT
+cat > /etc/systemd/system/bns-heartbeat.service <<UNIT
 [Unit]
-Description=Publish a GW230529 run heartbeat to S3
+Description=Publish a BNS run heartbeat to S3
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/gw230529-heartbeat
+ExecStart=/usr/local/bin/bns-heartbeat
 UNIT
 
-cat > /etc/systemd/system/gw230529-heartbeat.timer <<UNIT
+cat > /etc/systemd/system/bns-heartbeat.timer <<UNIT
 [Unit]
-Description=Periodic GW230529 heartbeat
+Description=Periodic BNS heartbeat
 
 [Timer]
 OnBootSec=5min
@@ -676,7 +676,7 @@ UNIT
 # complete generation. Losing an hour of evolution beats restoring from a torn
 # checkpoint and discovering it hours later.
 # ------------------------------------------------------------------
-cat > /usr/local/bin/gw230529-spot-watch <<WATCH
+cat > /usr/local/bin/bns-spot-watch <<WATCH
 #!/usr/bin/env bash
 set -euo pipefail
 export AWS_DEFAULT_REGION="$${AWS_REGION}"
@@ -687,7 +687,7 @@ while true; do
     -H "X-aws-ec2-metadata-token: \$${TOKEN}" \
     http://169.254.169.254/latest/meta-data/spot/instance-action)
   if [ "\$${CODE}" = "200" ]; then
-    logger -t gw230529 "spot interruption notice received, flushing to S3"
+    logger -t bns "spot interruption notice received, flushing to S3"
     # The end marker goes FIRST, before the flush.
     #
     # It is what turns logs/<run_name>/ into a ledger: every node leaves a
@@ -706,31 +706,31 @@ while true; do
     printf '{"instance_id":"%s","ended":"%s","reason":"spot-interruption","last_info_line":"%s"}' \
       "$${INSTANCE_ID}" "\$(date -Is)" "\$(printf '%s' "\$${info}" | tr -d '\\"')" \
       | aws s3 cp - "$${S3_LOGS}/ended-$${INSTANCE_ID}.json" --only-show-errors || true
-    /usr/local/bin/gw230529-sync || true
+    /usr/local/bin/bns-sync || true
     break
   fi
   sleep 5
 done
 WATCH
-chmod +x /usr/local/bin/gw230529-spot-watch
+chmod +x /usr/local/bin/bns-spot-watch
 
-cat > /etc/systemd/system/gw230529-spot-watch.service <<UNIT
+cat > /etc/systemd/system/bns-spot-watch.service <<UNIT
 [Unit]
-Description=Flush the GW230529 run to S3 on a spot interruption warning
+Description=Flush the BNS run to S3 on a spot interruption warning
 
 [Service]
 Type=simple
 Restart=always
-ExecStart=/usr/local/bin/gw230529-spot-watch
+ExecStart=/usr/local/bin/bns-spot-watch
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now gw230529-sync.timer
-systemctl enable --now gw230529-heartbeat.timer
-systemctl enable --now gw230529-spot-watch.service
+systemctl enable --now bns-sync.timer
+systemctl enable --now bns-heartbeat.timer
+systemctl enable --now bns-spot-watch.service
 
 # ------------------------------------------------------------------
 # 7. Run
@@ -793,7 +793,7 @@ else
   # checkpoints as diagnostic output.
   #
   # The invocation is checked against the built image rather than assumed
-  # (2026-08-20, gw230529-et:local):
+  # (2026-08-20, bns-et:local):
   #
   #   cactus_sim is NOT on PATH. The image adds nothing to the distribution
   #   default, so a bare name resolves to nothing and the run would die on
@@ -868,7 +868,7 @@ if [ "$${RUN_MODE}" = "simulation" ]; then
   sleep 45
 fi
 
-/usr/local/bin/gw230529-sync
+/usr/local/bin/bns-sync
 
 # The other half of the ledger. Same object name and shape as the one the
 # spot watcher writes, so logs/<run_name>/ended-*.json is a complete list of
@@ -886,8 +886,8 @@ printf '{"instance_id":"%s","ended":"%s","reason":"%s","status":%s,"last_info_li
   "$(grep -E '\| *[0-9]+\.[0-9]+ *\|' "$${CACTUS_LOG}" 2>/dev/null | tail -1 | tr -d '\\"' || true)" \
   | aws s3 cp - "$${S3_LOGS}/ended-$${INSTANCE_ID}.json" --only-show-errors || true
 
-echo "=== gw230529 bootstrap finished at $(date -Is), status=$${RUN_STATUS} ==="
+echo "=== bns bootstrap finished at $(date -Is), status=$${RUN_STATUS} ==="
 
 if [ "$${AUTO_SHUTDOWN}" = "true" ]; then
-  shutdown -h +1 "GW230529 run complete, terminating"
+  shutdown -h +1 "BNS run complete, terminating"
 fi

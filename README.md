@@ -1,6 +1,6 @@
-# GW230529 Einstein Toolkit — AWS infrastructure
+# BNS Einstein Toolkit — AWS infrastructure
 
-Terraform for the cloud half of the [GW230529 BH-NS
+Terraform for the cloud half of the [BNS
 simulation](https://github.com/s-sasaki-earthsea-wizard/gw230529-einstein-toolkit):
 a single spot compute node, an S3 bucket that acts as the system of record,
 a private registry for the Einstein Toolkit image, and the cost guardrails
@@ -143,12 +143,12 @@ container image ever entering the plan.
   has no ceiling. Use an IAM user or role and verify it with
   `make check-permissions`.
 - An IAM principal carrying [policies/terraform-operator.json](policies/terraform-operator.json) —
-  a single policy scoped to `gw230529-*` resources, with an explicit Deny that
-  keeps destructive EC2 actions off anything not tagged `Project=gw230529`.
+  a single policy scoped to `bns-*` resources, with an explicit Deny that
+  keeps destructive EC2 actions off anything not tagged `Project=bns`.
   See [policies/README.md](policies/README.md) for what can and cannot be
   scoped, and why
 - For watching a run rather than changing one, nothing beyond the same key:
-  `stacks/foundation` creates a read-only `gw230529-observer` role that is
+  `stacks/foundation` creates a read-only `bns-observer` role that is
   assumed without MFA. See [Watching a run without MFA](#watching-a-run-without-mfa)
 - Spot vCPU quota (`L-34B43A08`) of at least 192 in the chosen region.
   `make region-scout` reports the current value; us-east-1 and us-west-2
@@ -230,12 +230,12 @@ Three manual steps have no Terraform equivalent:
    belong in code. A secret is not a declarative fact.
 
    ```bash
-   aws iam create-access-key --user-name gw230529     # a user may hold two
-   # put the new one in ~/.aws/credentials under [gw230529-bootstrap]
+   aws iam create-access-key --user-name bns     # a user may hold two
+   # put the new one in ~/.aws/credentials under [bns-bootstrap]
    eval "$(make login)" && make check-permissions     # prove it is equivalent
-   aws iam update-access-key --user-name gw230529 --access-key-id <old> --status Inactive
+   aws iam update-access-key --user-name bns --access-key-id <old> --status Inactive
    # leave it inactive for a day, then
-   aws iam delete-access-key --user-name gw230529 --access-key-id <old>
+   aws iam delete-access-key --user-name bns --access-key-id <old>
    ```
 
    Deactivate before deleting. Inactive is reversible and deletion is not, and
@@ -267,7 +267,7 @@ Three manual steps have no Terraform equivalent:
 
 ### Watching a run without MFA
 
-`gw230529-terraform-operator` requires MFA, which is the right answer for
+`bns-terraform-operator` requires MFA, which is the right answer for
 anything that changes infrastructure and the wrong one for watching it. During
 the 2026-08-26 recovery test every call that blocked was read-only — the
 `CURRENT` marker, a slot listing, the bootstrap log while the run was in
@@ -275,7 +275,7 @@ flight, `make throughput`, `make heartbeat`, `DescribeInstances` to tell
 "finished" from "stuck" — and each one had to be relayed to whoever was
 holding the MFA device.
 
-`stacks/foundation` therefore also creates `gw230529-observer`: the same IAM
+`stacks/foundation` therefore also creates `bns-observer`: the same IAM
 user, no MFA condition, and read access to the data bucket, the foundation and
 compute state files, four EC2 describes, CloudWatch metrics and Cost Explorer.
 Nothing it carries can create, change, destroy or spend.
@@ -285,16 +285,16 @@ make output-foundation   # copy observer_profile_snippet into ~/.aws/config
 ```
 
 ```ini
-[profile gw230529-observer]
-role_arn       = arn:aws:iam::<account>:role/gw230529-observer
-source_profile = gw230529-bootstrap
+[profile bns-observer]
+role_arn       = arn:aws:iam::<account>:role/bns-observer
+source_profile = bns-bootstrap
 region         = us-west-2
 ```
 
 ```bash
-make throughput AWS_PROFILE=gw230529-observer
-make heartbeat  AWS_PROFILE=gw230529-observer
-aws s3 ls s3://<data-bucket>/checkpoints/<run>/slot-b/ --profile gw230529-observer
+make throughput AWS_PROFILE=bns-observer
+make heartbeat  AWS_PROFILE=bns-observer
+aws s3 ls s3://<data-bucket>/checkpoints/<run>/slot-b/ --profile bns-observer
 ```
 
 Run those from a shell that has **not** run `eval "$(make login)"`. An operator
@@ -325,7 +325,7 @@ kuibit renders the density frames instead of VisIt, which the gallery itself
 already uses for the Ψ4 plot.
 
 ```bash
-make fetch-results AWS_PROFILE=gw230529-observer   # sync output/ -> results/
+make fetch-results AWS_PROFILE=bns-observer   # sync output/ -> results/
 make postproc-image                                # build the render image
 make figures                                       # Psi4, rho_max, AH masses, rest mass
 make movie                                         # 29 frames -> mp4 + 3-panel snapshot

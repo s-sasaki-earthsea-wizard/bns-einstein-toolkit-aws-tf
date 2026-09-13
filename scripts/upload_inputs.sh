@@ -78,11 +78,11 @@ cd "${REPO_ROOT}"
 
 TF="${TF:-terraform}"
 SRC_DIR="${INPUTS_DIR:-upstream}"
-PARFILE="bhns_gw230529.par"
-ID_DIR="bhns_gw230529_ID"
+PARFILE="bhns_bns.par"
+ID_DIR="bhns_bns_ID"
 BUILD_DIR="${SRC_DIR}/.cloud"
 
-PROBE_PARFILE="bhns_gw230529_probe.par"
+PROBE_PARFILE="bhns_bns_probe.par"
 
 CADENCE_HOURS="${CHECKPOINT_WALLTIME_HOURS:-1.0}"
 FINAL_TIME="${CCTK_FINAL_TIME:-1750.0}"
@@ -309,7 +309,7 @@ fi
 # is still checked by everything above, and refusing to upload because a
 # 4 GB container image is missing would be its own kind of failure.
 # --------------------------------------------------------------------
-LOCAL_IMAGE="${LOCAL_IMAGE:-gw230529-et:local}"
+LOCAL_IMAGE="${LOCAL_IMAGE:-bns-et:local}"
 
 param_check() {
   local file="$1" label="$2"
@@ -319,13 +319,13 @@ param_check() {
   fi
   if docker run --rm -v "$(cd "$(dirname "${file}")" && pwd):/parcheck:ro" \
        "${LOCAL_IMAGE}" /home/etuser/Cactus/exe/cactus_sim \
-       -P "/parcheck/$(basename "${file}")" >/tmp/gw230529-paramcheck.$$ 2>&1; then
+       -P "/parcheck/$(basename "${file}")" >/tmp/bns-paramcheck.$$ 2>&1; then
     printf '  %-34s OK   %s\n' "${label}" "Cactus accepts every parameter"
-    rm -f /tmp/gw230529-paramcheck.$$
+    rm -f /tmp/bns-paramcheck.$$
   else
     printf '  %-34s FAIL %s\n' "${label}" "Cactus rejected it:"
-    tail -20 /tmp/gw230529-paramcheck.$$ | sed 's/^/      /'
-    rm -f /tmp/gw230529-paramcheck.$$
+    tail -20 /tmp/bns-paramcheck.$$ | sed 's/^/      /'
+    rm -f /tmp/bns-paramcheck.$$
     status=1
   fi
 }

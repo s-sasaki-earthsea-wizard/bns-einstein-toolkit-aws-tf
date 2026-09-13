@@ -6,8 +6,8 @@
       "Effect": "Allow",
       "Action": "s3:*",
       "Resource": [
-        "arn:aws:s3:::gw230529-*",
-        "arn:aws:s3:::gw230529-*/*"
+        "arn:aws:s3:::bns-*",
+        "arn:aws:s3:::bns-*/*"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "Resource": "*",
       "Condition": {
         "StringNotEquals": {
-          "aws:ResourceTag/Project": "gw230529"
+          "aws:ResourceTag/Project": "bns"
         }
       }
     },
@@ -51,7 +51,7 @@
       "Sid": "EcrProjectRepositories",
       "Effect": "Allow",
       "Action": "ecr:*",
-      "Resource": "arn:aws:ecr:*:*:repository/gw230529*"
+      "Resource": "arn:aws:ecr:*:*:repository/bns*"
     },
     {
       "Sid": "EcrAuthTokenHasNoResource",
@@ -79,7 +79,7 @@
         "iam:ListAttachedRolePolicies",
         "iam:PassRole"
       ],
-      "Resource": "arn:aws:iam::*:role/gw230529-*"
+      "Resource": "arn:aws:iam::*:role/bns-*"
     },
     {
       "Sid": "IamProjectInstanceProfiles",
@@ -94,25 +94,25 @@
         "iam:UntagInstanceProfile",
         "iam:ListInstanceProfileTags"
       ],
-      "Resource": "arn:aws:iam::*:instance-profile/gw230529-*"
+      "Resource": "arn:aws:iam::*:instance-profile/bns-*"
     },
     {
       "Sid": "SnsProjectTopics",
       "Effect": "Allow",
       "Action": "sns:*",
-      "Resource": "arn:aws:sns:*:*:gw230529-*"
+      "Resource": "arn:aws:sns:*:*:bns-*"
     },
     {
       "Sid": "EventBridgeProjectRules",
       "Effect": "Allow",
       "Action": "events:*",
-      "Resource": "arn:aws:events:*:*:rule/gw230529-*"
+      "Resource": "arn:aws:events:*:*:rule/bns-*"
     },
     {
       "Sid": "BudgetsProjectBudgets",
       "Effect": "Allow",
       "Action": "budgets:*",
-      "Resource": "arn:aws:budgets::*:budget/gw230529-*"
+      "Resource": "arn:aws:budgets::*:budget/bns-*"
     },
     {
       "Sid": "CostExplorerNoResourceScopePossible",
@@ -169,7 +169,7 @@
       "Resource": "arn:aws:ec2:*:*:instance/*",
       "Condition": {
         "StringEquals": {
-          "ssm:resourceTag/Project": "gw230529"
+          "ssm:resourceTag/Project": "bns"
         }
       }
     },

@@ -6,8 +6,8 @@
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": [
-        "arn:aws:iam::*:role/gw230529-terraform-operator",
-        "arn:aws:iam::*:role/gw230529-observer"
+        "arn:aws:iam::*:role/bns-terraform-operator",
+        "arn:aws:iam::*:role/bns-observer"
       ]
     },
     {
@@ -20,7 +20,7 @@
         "iam:DeleteAccessKey",
         "iam:GetAccessKeyLastUsed"
       ],
-      "Resource": "arn:aws:iam::*:user/gw230529"
+      "Resource": "arn:aws:iam::*:user/bns"
     },
     {
       "Sid": "ReadOwnMfaDeviceSoTheProfileCanBeConfigured",
@@ -29,7 +29,7 @@
         "iam:ListMFADevices",
         "iam:GetUser"
       ],
-      "Resource": "arn:aws:iam::*:user/gw230529"
+      "Resource": "arn:aws:iam::*:user/bns"
     }
   ]
 }

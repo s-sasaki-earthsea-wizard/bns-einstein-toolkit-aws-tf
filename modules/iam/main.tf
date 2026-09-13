@@ -23,7 +23,7 @@ data "aws_iam_policy_document" "assume_role" {
 
 resource "aws_iam_role" "node" {
   name               = "${var.name_prefix}-node"
-  description        = "GW230529 Einstein Toolkit compute node"
+  description        = "BNS Einstein Toolkit compute node"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 

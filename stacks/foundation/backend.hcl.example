@@ -2,7 +2,7 @@
 #   terraform init -backend-config=backend.hcl
 # backend.hcl is gitignored because the bucket name identifies the account.
 
-bucket       = "gw230529-tfstate-CHANGEME"
+bucket       = "bns-tfstate-CHANGEME"
 key          = "foundation/terraform.tfstate"
 region       = "us-west-2"
 encrypt      = true

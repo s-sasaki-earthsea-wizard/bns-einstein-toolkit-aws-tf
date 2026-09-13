@@ -4,7 +4,7 @@ aws_region = "us-west-2"
 
 # Where the foundation stack keeps its state. Same bucket as backend.hcl.
 foundation_state = {
-  bucket = "gw230529-tfstate-CHANGEME"
+  bucket = "bns-tfstate-CHANGEME"
   key    = "foundation/terraform.tfstate"
   region = "us-west-2"
 }
@@ -100,7 +100,7 @@ checkpoint_generations_kept = 2
 #   make upload-probe PROBE_MINUTES=90
 #
 # writes Cactus::terminate = "runtime" and Cactus::max_runtime = 90 into
-# bhns_gw230529_probe.par and uploads it. The cap is the cost guard -- nothing
+# bhns_bns_probe.par and uploads it. The cap is the cost guard -- nothing
 # else here bounds how long a run bills for, since auto_shutdown fires when
 # the run exits and the production parfile does not exit for days.
 #
@@ -121,7 +121,7 @@ checkpoint_generations_kept = 2
 # run_mode            = "simulation"
 # instance_type       = "c7a.48xlarge"
 # run_name            = "phase5-throughput-dx19p2"
-# parfile             = "bhns_gw230529_probe.par"
+# parfile             = "bhns_bns_probe.par"
 # mpi_procs           = 192
 # root_volume_size_gb = 500
 
@@ -158,7 +158,7 @@ checkpoint_generations_kept = 2
 # run_mode            = "simulation"
 # instance_type       = "c7a.48xlarge"
 # run_name            = "prod-dx19p2-1750m"
-# parfile             = "bhns_gw230529.par"
+# parfile             = "bhns_bns.par"
 # image_tag           = "sha256:CHANGEME"
 # mpi_procs           = 192
 # root_volume_size_gb = 500

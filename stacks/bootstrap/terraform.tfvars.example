@@ -6,4 +6,4 @@ aws_region = "us-west-2"
 # S3 bucket names are globally unique across all AWS accounts. Add a random
 # suffix rather than the account id -- it avoids collisions without publishing
 # an identifier.
-state_bucket_name = "gw230529-tfstate-CHANGEME"
+state_bucket_name = "bns-tfstate-CHANGEME"

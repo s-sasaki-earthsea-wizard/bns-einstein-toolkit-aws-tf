@@ -60,8 +60,8 @@
 #
 # Examples:
 #   scripts/run_ledger.sh
-#   AWS_PROFILE=gw230529-observer scripts/run_ledger.sh
-#   scripts/run_ledger.sh s3://gw230529-data-earthsea/logs/prod-dx19p2-1750m/
+#   AWS_PROFILE=bns-observer scripts/run_ledger.sh
+#   scripts/run_ledger.sh s3://bns-data-earthsea/logs/prod-dx19p2-1750m/
 
 set -euo pipefail
 
@@ -88,7 +88,7 @@ if [ -z "${PREFIX}" ]; then
   if [ -z "${PREFIX}" ]; then
     echo "no prefix given and the compute stack's log_prefix could not be read." >&2
     echo "Is there a session? Try: eval \"\$(make login)\", or" >&2
-    echo "AWS_PROFILE=gw230529-observer in a shell with no operator session." >&2
+    echo "AWS_PROFILE=bns-observer in a shell with no operator session." >&2
     echo "Or pass an s3:// prefix directly." >&2
     exit 1
   fi

@@ -12,14 +12,14 @@
 #       Simulate against a policy document that has not been attached yet.
 #
 # Every action is evaluated against a concrete resource ARN. This matters:
-# a resource-scoped policy such as s3:* on arn:aws:s3:::gw230529-* evaluates
+# a resource-scoped policy such as s3:* on arn:aws:s3:::bns-* evaluates
 # as implicitDeny when simulated against the default wildcard resource, which
 # reads as "no permission" when the permission is in fact present and correctly
 # scoped. Simulating against "*" answers a different question from the one
 # Terraform will ask.
 #
 # The Project tag is supplied as a context entry because provider default_tags
-# stamps Project=gw230529 on every resource this project creates, and the
+# stamps Project=bns on every resource this project creates, and the
 # operator policy uses that tag to fence off destructive EC2 actions.
 
 set -euo pipefail
@@ -108,16 +108,16 @@ simulate() {
     result="$(aws iam simulate-custom-policy \
       --policy-input-list "${POLICY_ARGS[@]}" \
       --resource-arns "${resource}" \
-      --context-entries 'ContextKeyName=aws:ResourceTag/Project,ContextKeyValues=gw230529,ContextKeyType=string' \
-                        'ContextKeyName=ssm:resourceTag/Project,ContextKeyValues=gw230529,ContextKeyType=string' \
+      --context-entries 'ContextKeyName=aws:ResourceTag/Project,ContextKeyValues=bns,ContextKeyType=string' \
+                        'ContextKeyName=ssm:resourceTag/Project,ContextKeyValues=bns,ContextKeyType=string' \
       --action-names "$@" \
       --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output text)"
   else
     result="$(aws iam simulate-principal-policy \
       --policy-source-arn "${PRINCIPAL}" \
       --resource-arns "${resource}" \
-      --context-entries 'ContextKeyName=aws:ResourceTag/Project,ContextKeyValues=gw230529,ContextKeyType=string' \
-                        'ContextKeyName=ssm:resourceTag/Project,ContextKeyValues=gw230529,ContextKeyType=string' \
+      --context-entries 'ContextKeyName=aws:ResourceTag/Project,ContextKeyValues=bns,ContextKeyType=string' \
+                        'ContextKeyName=ssm:resourceTag/Project,ContextKeyValues=bns,ContextKeyType=string' \
       --action-names "$@" \
       --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output text)"
   fi
@@ -140,12 +140,12 @@ simulate() {
 E="arn:aws:ec2:${REGION}:${ACCOUNT}"
 
 echo "stacks/bootstrap"
-simulate "state bucket" "arn:aws:s3:::gw230529-tfstate-probe" \
+simulate "state bucket" "arn:aws:s3:::bns-tfstate-probe" \
   s3:CreateBucket s3:PutBucketVersioning s3:PutEncryptionConfiguration \
   s3:PutBucketPublicAccessBlock s3:PutLifecycleConfiguration \
   s3:PutBucketOwnershipControls s3:PutBucketTagging s3:GetBucketLocation \
   s3:GetBucketVersioning s3:ListBucket s3:ListBucketVersions
-simulate "state objects" "arn:aws:s3:::gw230529-tfstate-probe/foundation/terraform.tfstate" \
+simulate "state objects" "arn:aws:s3:::bns-tfstate-probe/foundation/terraform.tfstate" \
   s3:PutObject s3:GetObject s3:GetObjectVersion s3:DeleteObject
 
 echo
@@ -160,28 +160,28 @@ simulate "vpc endpoint" "${E}:vpc-endpoint/vpce-0123456789abcdef0" \
   ec2:CreateVpcEndpoint ec2:DeleteVpcEndpoints
 simulate "security group" "${E}:security-group/sg-0123456789abcdef0" \
   ec2:CreateSecurityGroup ec2:AuthorizeSecurityGroupEgress ec2:DeleteSecurityGroup
-simulate "data bucket" "arn:aws:s3:::gw230529-data-probe" \
+simulate "data bucket" "arn:aws:s3:::bns-data-probe" \
   s3:CreateBucket s3:PutLifecycleConfiguration s3:PutBucketTagging s3:ListBucket
-simulate "ecr repository" "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/gw230529/einstein-toolkit" \
+simulate "ecr repository" "arn:aws:ecr:${REGION}:${ACCOUNT}:repository/bns/einstein-toolkit" \
   ecr:CreateRepository ecr:PutLifecyclePolicy ecr:DescribeRepositories ecr:TagResource \
   ecr:InitiateLayerUpload ecr:UploadLayerPart ecr:CompleteLayerUpload ecr:PutImage \
   ecr:BatchCheckLayerAvailability ecr:PutImageScanningConfiguration ecr:DeleteRepository
 simulate "ecr auth" "*" ecr:GetAuthorizationToken
-simulate "iam role" "arn:aws:iam::${ACCOUNT}:role/gw230529-node" \
+simulate "iam role" "arn:aws:iam::${ACCOUNT}:role/bns-node" \
   iam:CreateRole iam:PutRolePolicy iam:AttachRolePolicy iam:GetRole iam:PassRole \
   iam:TagRole iam:DeleteRolePolicy iam:DetachRolePolicy iam:DeleteRole
-simulate "iam instance profile" "arn:aws:iam::${ACCOUNT}:instance-profile/gw230529-node" \
+simulate "iam instance profile" "arn:aws:iam::${ACCOUNT}:instance-profile/bns-node" \
   iam:CreateInstanceProfile iam:AddRoleToInstanceProfile iam:GetInstanceProfile \
   iam:TagInstanceProfile iam:RemoveRoleFromInstanceProfile iam:DeleteInstanceProfile
-simulate "sns topics" "arn:aws:sns:${REGION}:${ACCOUNT}:gw230529-ops-alerts" \
+simulate "sns topics" "arn:aws:sns:${REGION}:${ACCOUNT}:bns-ops-alerts" \
   sns:CreateTopic sns:Subscribe sns:SetTopicAttributes sns:GetTopicAttributes \
   sns:TagResource sns:DeleteTopic
 # budgets:ModifyBudget cannot share a simulator call with the other budget
 # actions -- the API rejects the pair as requiring "different authorization
 # information".
-simulate "budgets" "arn:aws:budgets::${ACCOUNT}:budget/gw230529-01" \
+simulate "budgets" "arn:aws:budgets::${ACCOUNT}:budget/bns-01" \
   budgets:CreateBudget budgets:DescribeBudget budgets:DeleteBudget
-simulate "budgets (modify)" "arn:aws:budgets::${ACCOUNT}:budget/gw230529-01" \
+simulate "budgets (modify)" "arn:aws:budgets::${ACCOUNT}:budget/bns-01" \
   budgets:ModifyBudget
 simulate "cost anomaly" "*" \
   ce:CreateAnomalyMonitor ce:CreateAnomalySubscription ce:GetAnomalyMonitors \
@@ -196,7 +196,7 @@ simulate "launch template" "${E}:launch-template/lt-0123456789abcdef0" \
 simulate "instance" "${E}:instance/i-0123456789abcdef0" ec2:RunInstances ec2:TerminateInstances
 simulate "ami (aws owned)" "arn:aws:ec2:${REGION}::image/ami-0123456789abcdef0" ec2:RunInstances
 simulate "volume" "${E}:volume/vol-0123456789abcdef0" ec2:RunInstances ec2:DeleteVolume
-simulate "eventbridge rule" "arn:aws:events:${REGION}:${ACCOUNT}:rule/gw230529-spot-interruption" \
+simulate "eventbridge rule" "arn:aws:events:${REGION}:${ACCOUNT}:rule/bns-spot-interruption" \
   events:PutRule events:PutTargets events:DescribeRule events:TagResource \
   events:RemoveTargets events:DeleteRule
 simulate "session manager" "*" \

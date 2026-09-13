@@ -13,7 +13,7 @@
 # redistribution problem.
 #
 # Why fetch here rather than reach into the simulation repository. The old
-# default pointed INPUTS_DIR at ../gw230529-einstein-toolkit/upstream, which
+# default pointed INPUTS_DIR at ../bns-einstein-toolkit/upstream, which
 # meant a fresh clone of this repository could not do a production run at all
 # unless the sibling happened to be checked out beside it, and nothing
 # declared that dependency. Fetching from the gallery makes this repository
@@ -47,9 +47,9 @@ DEST="${INPUTS_DIR:-upstream}"
 # Verified 2026-08-20 against the gallery, and byte-identical to the copies the
 # simulation repository has been running on since Phase 1 (except the .info,
 # which it edited locally -- see the header).
-PAR_NAME="bhns_gw230529.par"
+PAR_NAME="bhns_bns.par"
 PAR_SHA="d216cc57f2ef6a0fbe75cb51fef4d5eda508c299a3958f5036ae6519c70a016a"
-ID_NAME="bhns_gw230529_ID.tar.gz"
+ID_NAME="bhns_bns_ID.tar.gz"
 ID_SHA="d958896318f5bb55b669ea1186f1d86f4d6bc4260b0493179645f55912a2b38c"
 
 # The reference run lives on the Einstein Toolkit download host, not under
@@ -58,7 +58,7 @@ ID_SHA="d958896318f5bb55b669ea1186f1d86f4d6bc4260b0493179645f55912a2b38c"
 REF_NAME="bhns_20252103.tar.gz"
 REF_SHA="ccfbe412cac4f33db834d24d8b939e3b8d352da5c32e59ac590eceb12688c028"
 REF_URL="https://bitbucket.org/einsteintoolkit/www/downloads/bhns_20252103.tar.gz"
-REF_LOG="bhns_20252103/bhns_gw230529.out"
+REF_LOG="bhns_20252103/bhns_bns.out"
 
 FORCE=""
 WANT_REFERENCE=""
@@ -126,7 +126,7 @@ mkdir -p "${DEST}"
 fetch "${PAR_NAME}" "${PAR_SHA}" "${DEST}/${PAR_NAME}"
 fetch "${ID_NAME}"  "${ID_SHA}"  "${DEST}/${ID_NAME}"
 
-# The tarball unpacks to bhns_gw230529_ID/, which is the layout the upload
+# The tarball unpacks to bhns_bns_ID/, which is the layout the upload
 # step and the INPUTS_DIR override both expect.
 echo "  ${ID_NAME}: extracting"
 tar xzf "${DEST}/${ID_NAME}" -C "${DEST}"
@@ -134,9 +134,9 @@ tar xzf "${DEST}/${ID_NAME}" -C "${DEST}"
 MISSING=0
 for f in \
   "${PAR_NAME}" \
-  "bhns_gw230529_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.info" \
-  "bhns_gw230529_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.dat" \
-  "bhns_gw230529_ID/gam2.polytrope"
+  "bhns_bns_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.info" \
+  "bhns_bns_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.dat" \
+  "bhns_bns_ID/gam2.polytrope"
 do
   if [ -f "${DEST}/${f}" ]; then
     printf '  %-58s %8s bytes\n' "${f}" "$(stat -c%s "${DEST}/${f}")"

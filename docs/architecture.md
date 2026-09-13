@@ -1,6 +1,6 @@
 # Architecture
 
-Cloud execution environment for the GW230529 BH-NS merger simulation
+Cloud execution environment for the BNS merger simulation
 (Phases 4–6 of the [simulation
 repository](https://github.com/s-sasaki-earthsea-wizard/gw230529-einstein-toolkit)).
 

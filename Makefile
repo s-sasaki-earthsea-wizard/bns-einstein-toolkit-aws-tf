@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 Syota Sasaki
-# GW230529 BH-NS Einstein Toolkit -- AWS infrastructure
+# BNS Einstein Toolkit -- AWS infrastructure
 # =====================================================
 # Run `make help` for the list of targets.
 # Functionality is split across sub-makefiles under makefiles/.
@@ -12,7 +12,7 @@ include makefiles/post.mk
 
 .PHONY: help
 help: ## Show this help
-	@echo "GW230529 AWS infrastructure -- available targets:"
+	@echo "BNS AWS infrastructure -- available targets:"
 	@echo ""
 	@awk 'BEGIN{FS=":.*?## "} \
 		/^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next } \
