@@ -20,7 +20,7 @@ set -euo pipefail
 # Cactus writes no timestamps of its own. Carpet::physical_time_per_hour does
 # appear in the run log, but it is a trailing average over
 # Carpet::timing_average_window_minutes and it says nothing about the phases
-# either side of the evolution -- the FUKA import, the checkpoint writes, the
+# either side of the evolution -- the LORENE import, the checkpoint writes, the
 # ECR pull. Without a clock in the log those can only be inferred from the S3
 # sync timestamps around the run, which is exactly how the dx=28 throughput
 # figure ended up recorded as a range of 4.5-10 sec/iter rather than a value.
@@ -170,14 +170,13 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 2b. Fetch the parfile and the FUKA initial data
+# 2b. Fetch the parfile and the LORENE initial data
 #
 # These are Einstein Toolkit gallery artefacts. They are not redistributable,
-# so they are neither committed nor baked into the image -- the simulation
-# repository keeps them in a gitignored upstream/ that is also excluded from
-# the Docker build context. Locally they are visible only because the whole
-# repository is bind mounted, which is a mount source this machine does not
-# have. Four files, 1.6 MB, fetched from the private bucket instead.
+# so they are neither committed nor baked into the image; the node fetches
+# them from the private bucket instead. Two files, about 12 MB: the derived
+# parfile and the LORENE Bin_NS data set, already decompressed by
+# upload_inputs.sh so that nothing here depends on xz.
 #
 # Keeping them out of ECR also means a mis-set repository visibility cannot
 # republish upstream copyrighted data.
@@ -191,49 +190,25 @@ if [ "$${RUN_MODE}" = "simulation" ]; then
     exit 1
   fi
 
-  # The FUKA .info file carries an absolute path to the EOS table, which the
-  # upstream distribution ships as the literal placeholder /path/to/. Rewrite
-  # it to wherever the inputs happen to be mounted rather than requiring the
-  # container layout to match whatever the file was last edited for.
+  # The parfile names the LORENE data set by absolute path -- whatever
+  # machine the gallery example was last run from. Where the initial data
+  # lives is this script's decision (it chose the mount point), not the
+  # gallery's, so only the basename survives the rewrite. Two expressions:
+  # the second covers a value that is already a bare filename, which the
+  # gallery's own results parfile carries.
   #
-  # The key is indented in the file, so the anchor has to allow leading
-  # whitespace; the second expression covers a bare filename with no directory
-  # part. Both keep the original indentation through \1.
-  for info in "$${WORK_DIR}"/inputs/*.info; do
-    [ -f "$${info}" ] || continue
-    sed -i -E \
-      -e "s|^([[:space:]]*eosfile[[:space:]]+).*/([^/[:space:]]+)[[:space:]]*$|\1$${C_INPUTS}/\2|" \
-      -e "s|^([[:space:]]*eosfile[[:space:]]+)([^/[:space:]]+)[[:space:]]*$|\1$${C_INPUTS}/\2|" \
-      "$${info}"
-    echo "$(basename "$${info}"): $(grep -E '^[[:space:]]*eosfile' "$${info}" || echo 'no eosfile key')"
-  done
-
-  if ! grep -qE "^[[:space:]]*eosfile[[:space:]]+$${C_INPUTS}/" "$${WORK_DIR}"/inputs/*.info; then
-    echo "FATAL: eosfile path rewrite did not take; the run would abort on the EOS table"
-    exit 1
-  fi
-
-  # The parfile carries a second copy of the same placeholder: it points
-  # KadathImporter at the .info file by absolute path, and the gallery ships
-  # that as /path/to/ as well. Fixing the .info alone is not enough -- Cactus
-  # reads the parfile first, so this is the one that decides whether the run
-  # starts at all.
-  #
-  # Only the basename survives the rewrite. Where the initial data lives is
-  # this script's decision (it chose the mount point), not the gallery's.
-  # Two expressions for the same reason as the .info rewrite above: the second
-  # covers a value that is already a bare filename, which a parfile generated
-  # elsewhere may well carry.
+  # Cactus reads the parfile before anything else, so this rewrite decides
+  # whether the run starts at all; it is checked rather than assumed.
   sed -i -E \
-    -e "s|^([[:space:]]*kadathimporter::filename[[:space:]]*=[[:space:]]*\")[^\"]*/([^\"/]+)(\")|\1$${C_INPUTS}/\2\3|I" \
-    -e "s|^([[:space:]]*kadathimporter::filename[[:space:]]*=[[:space:]]*\")([^\"/]+)(\")|\1$${C_INPUTS}/\2\3|I" \
+    -e "s|^([[:space:]]*meudon_bin_ns::filename[[:space:]]*=[[:space:]]*\")[^\"]*/([^\"/]+)(\")|\1$${C_INPUTS}/\2\3|I" \
+    -e "s|^([[:space:]]*meudon_bin_ns::filename[[:space:]]*=[[:space:]]*\")([^\"/]+)(\")|\1$${C_INPUTS}/\2\3|I" \
     "$${WORK_DIR}/inputs/$${PARFILE}"
 
-  ID_INFO="$(sed -nE 's|^[[:space:]]*kadathimporter::filename[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|Ip' \
+  ID_FILE="$(sed -nE 's|^[[:space:]]*meudon_bin_ns::filename[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|Ip' \
     "$${WORK_DIR}/inputs/$${PARFILE}" | head -1)"
-  echo "kadathimporter::filename: $${ID_INFO:-<absent>}"
+  echo "Meudon_Bin_NS::filename: $${ID_FILE:-<absent>}"
 
-  case "$${ID_INFO}" in
+  case "$${ID_FILE}" in
     "$${C_INPUTS}/"*) ;;
     *)
       echo "FATAL: initial data path rewrite did not take; the run would abort on the import"
@@ -243,8 +218,8 @@ if [ "$${RUN_MODE}" = "simulation" ]; then
 
   # Rewriting the directory is worthless if the file it now names was never
   # uploaded, and that failure surfaces only after the container has started.
-  if [ ! -f "$${WORK_DIR}/inputs/$${ID_INFO##*/}" ]; then
-    echo "FATAL: $${ID_INFO##*/} is not among the files under $${S3_INPUTS}/"
+  if [ ! -f "$${WORK_DIR}/inputs/$${ID_FILE##*/}" ]; then
+    echo "FATAL: $${ID_FILE##*/} is not among the files under $${S3_INPUTS}/"
     ls -1 "$${WORK_DIR}/inputs/"
     exit 1
   fi

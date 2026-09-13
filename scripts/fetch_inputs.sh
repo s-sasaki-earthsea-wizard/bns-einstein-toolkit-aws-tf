@@ -4,36 +4,31 @@
 #
 # Fetch the Einstein Toolkit gallery artefacts this project runs on.
 #
-# Four files, 1.6 MB: the BH-NS parameter file and the FUKA/Kadath initial
-# data it imports. They are upstream gallery material, so this repository
-# records where they come from and what they should hash to, and nothing else.
-# Downloads land in a gitignored directory and are never committed, never
-# baked into the container image, and never pushed to ECR -- a mis-set
-# repository visibility would otherwise turn an inconvenience into a
-# redistribution problem.
+# Three files: the BNS parameter file, the LORENE initial data it imports
+# (a 3.6 MB .xz that unpacks to 12 MB) and the thornlist that documents the
+# one thorn the example needs beyond the release manifest, NSTracker. They
+# are upstream gallery material, so this repository records where they come
+# from and what they should hash to, and nothing else. Downloads land in a
+# gitignored directory and are never committed, never baked into the
+# container image, and never pushed to ECR -- a mis-set repository
+# visibility would otherwise turn an inconvenience into a redistribution
+# problem.
 #
-# Why fetch here rather than reach into the simulation repository. The old
-# default pointed INPUTS_DIR at ../bns-einstein-toolkit/upstream, which
-# meant a fresh clone of this repository could not do a production run at all
-# unless the sibling happened to be checked out beside it, and nothing
-# declared that dependency. Fetching from the gallery makes this repository
-# stand on its own -- and gives a better starting point besides: the sibling's
-# copy of the .info file has a host-specific absolute EOS path edited into it,
-# while upstream still carries the /path/to/ placeholder the node's boot-time
-# rewrite is written against.
+# The initial data is decompressed here rather than on the node. LORENE reads
+# the .resu directly, and the decompressed file is what upload_inputs.sh
+# sends to the bucket, so nothing in the boot path depends on xz being
+# present on the instance.
 #
-# --reference additionally fetches the gallery's published reference run
-# (bhns_20252103, the same dx=19.2 configuration run to t = 3051 M on
-# COSMA8) and extracts its stdout log. That log carries the CarpetIOBasic
-# info line -- rho_b and constraint extrema every 4 iterations -- in exactly
-# the format our own cactus-stdout.log uses, which is what a live run is
-# validated against. 573 MB for a 4.5 MB file, so it is opt-in; if the
-# simulation repository is checked out beside this one, copy its tarball
-# into upstream/ first and the download is skipped. Optional: nothing in
-# the run path needs it.
+# --reference additionally fetches the gallery's published results tarball
+# (bns-20260604.tar.gz, 88 MB) and extracts its stdout log, the parfile the
+# run actually used, and the run notes. That log carries the CarpetIOBasic
+# info line -- rest mass, density and constraint extrema, every iteration --
+# in exactly the format our own cactus-stdout.log uses, which is what a live
+# run is validated against (scripts/validate_against_reference.sh). Optional:
+# nothing in the run path needs it.
 #
-# Checksums are pinned. Two repositories fetching the same artefacts
-# independently can drift, and upstream can change under us without saying so.
+# Checksums are pinned. Upstream can change under us without saying so, and
+# the gallery page itself says the example was last tested on 2026-06-04.
 
 set -euo pipefail
 
@@ -41,24 +36,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 cd "${REPO_ROOT}"
 
-BASE_URL="https://einsteintoolkit.org/gallery/bhns"
+BASE_URL="https://einsteintoolkit.org/gallery/bns"
 DEST="${INPUTS_DIR:-upstream}"
 
-# Verified 2026-08-20 against the gallery, and byte-identical to the copies the
-# simulation repository has been running on since Phase 1 (except the .info,
-# which it edited locally -- see the header).
-PAR_NAME="bhns_bns.par"
-PAR_SHA="d216cc57f2ef6a0fbe75cb51fef4d5eda508c299a3958f5036ae6519c70a016a"
-ID_NAME="bhns_bns_ID.tar.gz"
-ID_SHA="d958896318f5bb55b669ea1186f1d86f4d6bc4260b0493179645f55912a2b38c"
+# Verified 2026-09-13 against the gallery.
+PAR_NAME="bns.par"
+PAR_SHA="d4ef36d0df3b31a1da1c88ce02acedaf8ffdf88d7aede34f2caa9dc121a72ae7"
+TH_NAME="bns.th"
+TH_SHA="43c8670ae0b5fa9656ae1bbc7694ce48baf67787e1be04396712d0ec44b33fcc"
+ID_XZ_NAME="G2_I12vs12_D4R33T21_45km.resu.xz"
+ID_XZ_SHA="e82ec6cbda01702372f06cf167b785612adc2971af2ed2aeed827e239bbc664b"
+# The decompressed data set, which is what the parfile names and the node
+# reads. Pinned separately so that a truncated decompression is caught too.
+ID_NAME="G2_I12vs12_D4R33T21_45km.resu"
+ID_SHA="6517e40a1847822fd031b36207de78820339a9a7b4cbba537f921d4488553e96"
 
 # The reference run lives on the Einstein Toolkit download host, not under
-# the gallery page. Verified 2026-08-27 against the copy the simulation
-# repository has been analysing against since Phase 3.
-REF_NAME="bhns_20252103.tar.gz"
-REF_SHA="ccfbe412cac4f33db834d24d8b939e3b8d352da5c32e59ac590eceb12688c028"
-REF_URL="https://bitbucket.org/einsteintoolkit/www/downloads/bhns_20252103.tar.gz"
-REF_LOG="bhns_20252103/bhns_bns.out"
+# the gallery page. Run on Teton (INL) on 2026-06-04: 2 nodes, 32 MPI ranks
+# of 24 threads, 10 h 33 min to t = 2500.
+REF_NAME="bns-20260604.tar.gz"
+REF_SHA="8e7f6c4016b6c1b5b3f79e799cba2814f79a30d31ba0993d18f42269b02533e6"
+REF_URL="https://bitbucket.org/einsteintoolkit/www/downloads/bns-20260604.tar.gz"
+REF_LOG="results/bns-1905387.out"
+REF_PAR="results/bnsg.par"
+REF_NOTES="results/run_notes.txt"
 
 FORCE=""
 WANT_REFERENCE=""
@@ -73,6 +74,7 @@ done
 have() { command -v "$1" >/dev/null 2>&1; }
 have curl || { echo "curl is required"; exit 1; }
 have sha256sum || { echo "sha256sum is required"; exit 1; }
+have xz || { echo "xz is required to unpack the LORENE data set"; exit 1; }
 
 # Verify without downloading, so a second run is free and a corrupted file is
 # still caught.
@@ -116,55 +118,61 @@ fetch() {
   echo "  ${name}: verified"
 }
 
-echo "Fetching Einstein Toolkit BH-NS gallery artefacts into ${DEST}/"
+echo "Fetching Einstein Toolkit BNS gallery artefacts into ${DEST}/"
 echo "Upstream: ${BASE_URL}/"
 echo "These are not redistributable -- ${DEST}/ is gitignored, keep it that way."
 echo ""
 
 mkdir -p "${DEST}"
 
-fetch "${PAR_NAME}" "${PAR_SHA}" "${DEST}/${PAR_NAME}"
-fetch "${ID_NAME}"  "${ID_SHA}"  "${DEST}/${ID_NAME}"
+fetch "${PAR_NAME}"   "${PAR_SHA}"   "${DEST}/${PAR_NAME}"
+fetch "${TH_NAME}"    "${TH_SHA}"    "${DEST}/${TH_NAME}"
+fetch "${ID_XZ_NAME}" "${ID_XZ_SHA}" "${DEST}/${ID_XZ_NAME}"
 
-# The tarball unpacks to bhns_bns_ID/, which is the layout the upload
-# step and the INPUTS_DIR override both expect.
-echo "  ${ID_NAME}: extracting"
-tar xzf "${DEST}/${ID_NAME}" -C "${DEST}"
+if [ -z "${FORCE}" ] && verify "${DEST}/${ID_NAME}" "${ID_SHA}"; then
+  echo "  ${ID_NAME}: already unpacked and matching"
+else
+  echo "  ${ID_NAME}: unpacking"
+  xz -dk -f "${DEST}/${ID_XZ_NAME}"
+  if ! verify "${DEST}/${ID_NAME}" "${ID_SHA}"; then
+    echo "  ${ID_NAME}: CHECKSUM MISMATCH after decompression"
+    rm -f "${DEST}/${ID_NAME}"
+    exit 1
+  fi
+  echo "  ${ID_NAME}: verified"
+fi
 
 MISSING=0
-for f in \
-  "${PAR_NAME}" \
-  "bhns_bns_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.info" \
-  "bhns_bns_ID/BHNS_ECC_RED.gam2.30.0.0.5.q0.388889.0.0.13.dat" \
-  "bhns_bns_ID/gam2.polytrope"
-do
+for f in "${PAR_NAME}" "${TH_NAME}" "${ID_NAME}"; do
   if [ -f "${DEST}/${f}" ]; then
-    printf '  %-58s %8s bytes\n' "${f}" "$(stat -c%s "${DEST}/${f}")"
+    printf '  %-40s %10s bytes\n' "${f}" "$(stat -c%s "${DEST}/${f}")"
   else
-    printf '  %-58s MISSING\n' "${f}"
+    printf '  %-40s MISSING\n' "${f}"
     MISSING=1
   fi
 done
 
 if [ "${MISSING}" -ne 0 ]; then
   echo ""
-  echo "The archive did not contain what was expected. Nothing was uploaded."
+  echo "Something expected is missing. Nothing was uploaded."
   exit 1
 fi
 
 if [ -n "${WANT_REFERENCE}" ]; then
   echo ""
   fetch "${REF_NAME}" "${REF_SHA}" "${DEST}/${REF_NAME}" "${REF_URL}"
-  # Just the log. The rest of the archive -- 2D snapshots, horizon surfaces --
-  # is what the simulation repository analyses; this repository only compares
-  # info lines.
-  echo "  ${REF_NAME}: extracting ${REF_LOG}"
-  tar xzf "${DEST}/${REF_NAME}" -C "${DEST}" "${REF_LOG}"
-  if [ ! -f "${DEST}/${REF_LOG}" ]; then
-    echo "  ${REF_LOG}: MISSING from the archive"
-    exit 1
-  fi
-  printf '  %-58s %8s bytes\n' "${REF_LOG}" "$(stat -c%s "${DEST}/${REF_LOG}")"
+  # The log, the parfile as run, and the notes. The 192 MB rho.xy.h5 and the
+  # Psi4 multipole file stay in the archive; post-processing can extract
+  # them when it wants a side-by-side, monitoring only compares info lines.
+  echo "  ${REF_NAME}: extracting ${REF_LOG}, ${REF_PAR}, ${REF_NOTES}"
+  tar xzf "${DEST}/${REF_NAME}" -C "${DEST}" "${REF_LOG}" "${REF_PAR}" "${REF_NOTES}"
+  for f in "${REF_LOG}" "${REF_PAR}" "${REF_NOTES}"; do
+    if [ ! -f "${DEST}/${f}" ]; then
+      echo "  ${f}: MISSING from the archive"
+      exit 1
+    fi
+    printf '  %-40s %10s bytes\n' "${f}" "$(stat -c%s "${DEST}/${f}")"
+  done
 fi
 
 echo ""

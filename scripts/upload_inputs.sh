@@ -5,45 +5,61 @@
 # Derive the cloud parameter file from the pristine gallery one, check that it
 # can survive a spot interruption, and upload it with the initial data.
 #
-# The gallery parfile is written for COSMA8, where jobs are capped at 30 hours
-# and a checkpoint every 29 hours costs nothing. Two settings have to change
-# before it is fit for a spot instance:
+# The gallery parfile is written for a batch queue run under simfactory. It
+# checkpoints only when the job's wall clock runs out, keeps its checkpoints
+# next to its output, and carries a simfactory placeholder that Cactus itself
+# cannot parse. Seven things change before it is fit for a spot instance:
 #
-#   IO::checkpoint_every_walltime_hours   29 -> 1.0
-#       Expected loss on an interruption is about half the checkpoint interval.
-#       A cloud run is 38-76 hours, so leaving it at 29 means an interruption
-#       costs 14.5 hours on average -- a fifth to nearly half the whole run.
-#       Writing 78 GB stops every rank for ~78 seconds, which at hourly is
-#       2.2% of wall clock: cheap against what it protects.
+#   IO::checkpoint_every_walltime_hours   absent -> 1.0
+#       The gallery relies on checkpoint_on_terminate, driven by
+#       TerminationTrigger 30 minutes before the queue limit. A spot
+#       interruption gives two minutes, not thirty, so the run has to leave
+#       checkpoints behind on a schedule. Expected loss per interruption is
+#       half the interval. Revisit once the checkpoint size is measured: at
+#       an estimated ~45 GB and 1000 MB/s a write costs under a minute, and
+#       a shorter interval may be nearly free.
 #
-#   IO::checkpoint_ID                     absent -> "yes"
-#       Absent means "no" (CactusBase/IOUtil param.ccl). The FUKA import took
-#       24.9 minutes locally at dx=28 and parallelises only over MPI ranks,
-#       so without an initial-data checkpoint every interruption pays it again
-#       before evolution can resume.
+#   IO::checkpoint_keep                   absent -> 2
+#       The default is 1. Two generations on the volume means a local
+#       fallback if the newest one is unreadable.
 #
-#   Cactus::cctk_final_time               2000.0 -> 1750.0
-#       Decided 2026-08-27. The dx=28 dry run and the reference both show the
-#       remnant disc mass settled by merger + ~180 M, and the gallery page
-#       shows an essentially flat state well before 2000 M. 1750 M is merger
-#       (t ~ 713 M) + ~1040 M: the full ringdown at the r=500 extraction
-#       radius (the merger signal arrives there at t ~ 1213 M) plus the early
-#       disc evolution, minus ~4.8 h / ~15 USD of flat tail. 1500 M was
-#       rejected as ending right on the ringdown's heels.
-#       Override with CCTK_FINAL_TIME for a different end point.
+#   IO::checkpoint_dir / IO::recover_dir  $parfile -> "../CHECKPOINTS"
+#       The node bind-mounts a separate host directory at
+#       /home/etuser/simulations/<run_name>/CHECKPOINTS, which is what lets
+#       the sidecar rotate checkpoints through S3 slots while pushing output
+#       additively. The gallery writes both into the output directory, where
+#       the sidecar would treat them as output.
+#
+#   TerminationTrigger::max_walltime      @WALLTIME_HOURS@ -> 8760
+#       A simfactory substitution that never happens here. Cactus refuses to
+#       start on the literal. There is no queue limit on a spot node, so the
+#       walltime trigger is set far enough out never to fire; the
+#       termination *file* trigger stays on, which is how a graceful stop
+#       can be requested from outside.
+#
+#   Cactus::cctk_final_time               2500.0 (kept)
+#       The gallery end point: merger at t ~ 1750 and a hypermassive
+#       remnant for ~750 more. Override with CCTK_FINAL_TIME.
+#
+#   HTTPD, Socket                         dropped
+#       Cactus's built-in web server, useless behind a security group with
+#       no ingress, and it segfaults in the container when it cannot bind
+#       its socket. See the rewrite below.
+#
+# Two settings the gallery already gets right -- checkpoint_ID = "yes" and
+# recover = "autoprobe" -- are asserted rather than set, so that an upstream
+# change is caught here rather than on a billing instance. checkpoint_ID is
+# the one that matters most: without an initial-data checkpoint every
+# interruption re-imports the LORENE data before evolution can resume.
 #
 # The upstream file is left untouched; the cloud variant is derived into a
-# separate file. Two settings the gallery already gets right for our purposes
-# -- recover = "autoprobe" and checkpoint_keep = 2 -- are asserted rather than
-# set, so that an upstream change is caught here rather than at 3 USD/hour.
+# separate file. Every rewrite is checked afterwards. A sed that silently
+# matches nothing is the failure mode this whole script exists to prevent.
 #
-# Every rewrite is checked afterwards. A sed that silently matches nothing is
-# the failure mode this whole script exists to prevent.
-#
-# The parfile's own /path/to/ placeholder for the FUKA initial data is left
-# alone here -- the node rewrites it onto whatever it mounted. What is checked
-# is the basename, because that is what the node then has to find among the
-# files this script uploads.
+# The parfile's absolute path to the LORENE data set is left alone here --
+# the node rewrites it onto whatever it mounted. What is checked is the
+# basename, because that is what the node then has to find among the files
+# this script uploads.
 #
 # --probe MINUTES additionally derives a throughput probe parfile: the cloud
 # parfile with its termination condition changed from a physical time it will
@@ -53,22 +69,13 @@
 #   Cactus::max_runtime   absent -> MINUTES
 #
 # The cap is the cost guard. Nothing else in this repository bounds how long a
-# run bills for -- auto_shutdown fires when the run exits, and a full
-# resolution parfile does not exit for days -- so a probe launched against the
-# production parfile is a machine at 3 USD/h waiting to be noticed. With the
-# cap, the run ends itself and the node terminates.
+# run bills for -- auto_shutdown fires when the run exits, and the production
+# parfile does not exit for a day or more -- so a probe launched against the
+# production parfile is a machine billing while it waits to be noticed.
 #
 # Everything else is left at the production setting on purpose. A probe that
 # switched off checkpointing to look faster would measure a run nobody is
-# going to make: the hourly checkpoint stops every rank while 85.7 GB is
-# written, and that is a real term in the budget, not an artefact to be
-# tuned away.
-#
-# This also closes the gap that #7 describes. Every probe parfile so far came
-# from the simulation repository and was copied into the bucket by hand,
-# bypassing the checks below -- so the machine that produced them was a
-# dependency nobody had declared, and the memory probe parfile was never
-# inspected for recover, checkpoint_keep or the initial data basename.
+# going to make.
 
 set -euo pipefail
 
@@ -78,14 +85,16 @@ cd "${REPO_ROOT}"
 
 TF="${TF:-terraform}"
 SRC_DIR="${INPUTS_DIR:-upstream}"
-PARFILE="bhns_bns.par"
-ID_DIR="bhns_bns_ID"
+PARFILE="bns.par"
+ID_NAME="G2_I12vs12_D4R33T21_45km.resu"
 BUILD_DIR="${SRC_DIR}/.cloud"
 
-PROBE_PARFILE="bhns_bns_probe.par"
+PROBE_PARFILE="bns_probe.par"
 
 CADENCE_HOURS="${CHECKPOINT_WALLTIME_HOURS:-1.0}"
-FINAL_TIME="${CCTK_FINAL_TIME:-1750.0}"
+FINAL_TIME="${CCTK_FINAL_TIME:-2500.0}"
+MAX_WALLTIME_HOURS="${TERMINATION_MAX_WALLTIME_HOURS:-8760}"
+CKPT_DIR='"../CHECKPOINTS"'
 PROBE_MINUTES=""
 
 while [ $# -gt 0 ]; do
@@ -111,7 +120,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ ! -f "${SRC_DIR}/${PARFILE}" ] || [ ! -d "${SRC_DIR}/${ID_DIR}" ]; then
+if [ ! -f "${SRC_DIR}/${PARFILE}" ] || [ ! -f "${SRC_DIR}/${ID_NAME}" ]; then
   echo "gallery artefacts not found under ${SRC_DIR}/"
   echo "Fetch them first:"
   echo "  make fetch-inputs"
@@ -123,8 +132,8 @@ mkdir -p "${BUILD_DIR}"
 OUT="${BUILD_DIR}/${PARFILE}"
 cp "${SRC_DIR}/${PARFILE}" "${OUT}"
 
-# Both IO:: and IOUtil:: name the same thorn and the gallery file uses both,
-# so every pattern here accepts either.
+# Both IO:: and IOUtil:: name the same thorn, so every pattern here accepts
+# either.
 P='(IO|IOUtil)'
 
 set_or_append() {
@@ -134,8 +143,8 @@ set_or_append() {
   else
     # Keep it with the other checkpoint settings when there is an anchor to
     # hang it on, rather than orphaning it at the end of the file.
-    if grep -qE "^[[:space:]]*${P}::checkpoint_every_walltime_hours[[:space:]]*=" "${file}"; then
-      sed -i -E "/^[[:space:]]*${P}::checkpoint_every_walltime_hours[[:space:]]*=/a IO::${key} = ${value}" "${file}"
+    if grep -qE "^[[:space:]]*${P}::checkpoint_on_terminate[[:space:]]*=" "${file}"; then
+      sed -i -E "/^[[:space:]]*${P}::checkpoint_on_terminate[[:space:]]*=/a IO::${key} = ${value}" "${file}"
     else
       printf '\nIO::%s = %s\n' "${key}" "${value}" >> "${file}"
     fi
@@ -143,14 +152,33 @@ set_or_append() {
 }
 
 echo "Deriving the cloud parfile from ${SRC_DIR}/${PARFILE}"
-set_or_append "checkpoint_every_walltime_hours" "${CADENCE_HOURS}" "${OUT}"
-set_or_append "checkpoint_ID"                   '"yes"'            "${OUT}"
 
-# cctk_final_time is Cactus::, not IO::, so it does not go through
-# set_or_append. The gallery always sets it, so a plain rewrite suffices and
-# the assertion below catches a sed that matched nothing.
+# HTTPD goes. The gallery keeps Cactus's built-in web server on for steering
+# from a login node; here nothing can reach it -- the security group has no
+# ingress -- and the thorn segfaults inside the container when it cannot bind
+# its socket (observed with --exit-after-param-check on 2026-09-13, exit 139
+# right after "HTTPD Failed to create server socket"). Socket goes with it;
+# nothing else in this parfile uses it. The HTTPD:: parameters have to go
+# too, since Cactus refuses parameters of a thorn that is not active.
+sed -i -E \
+  -e '/^[[:space:]]*ActiveThorns[[:space:]]*=[[:space:]]*"[[:space:]]*HTTPD[[:space:]]+Socket[[:space:]]*"[[:space:]]*$/d' \
+  -e '/^[[:space:]]*HTTPD::/d' \
+  "${OUT}"
+
+set_or_append "checkpoint_every_walltime_hours" "${CADENCE_HOURS}" "${OUT}"
+set_or_append "checkpoint_keep"                 "2"                "${OUT}"
+set_or_append "checkpoint_ID"                   '"yes"'            "${OUT}"
+set_or_append "checkpoint_dir"                  "${CKPT_DIR}"      "${OUT}"
+set_or_append "recover_dir"                     "${CKPT_DIR}"      "${OUT}"
+
+# cctk_final_time and max_walltime are not IO::, so they do not go through
+# set_or_append. The gallery always sets both, so a plain rewrite suffices
+# and the assertions below catch a sed that matched nothing.
 sed -i -E \
   "s#^([[:space:]]*Cactus::cctk_final_time[[:space:]]*=[[:space:]]*).*\$#\\1${FINAL_TIME}#" \
+  "${OUT}"
+sed -i -E \
+  "s#^([[:space:]]*TerminationTrigger::max_walltime[[:space:]]*=[[:space:]]*).*\$#\\1${MAX_WALLTIME_HOURS}#" \
   "${OUT}"
 
 echo ""
@@ -158,9 +186,9 @@ echo "Difference from upstream:"
 diff -u "${SRC_DIR}/${PARFILE}" "${OUT}" | sed -n '3,$p' | sed 's/^/  /' || true
 
 # --------------------------------------------------------------------
-# Assertions. Two we just set, two the gallery is trusted for -- all four
-# checked the same way, because the point is whether the file that reaches S3
-# can survive an interruption, not whether a particular sed fired.
+# Assertions. The ones just set and the ones the gallery is trusted for are
+# all checked the same way, because the point is whether the file that
+# reaches S3 can survive an interruption, not whether a particular sed fired.
 # --------------------------------------------------------------------
 status=0
 TARGET=""
@@ -181,9 +209,7 @@ assert() {
 }
 
 # Every parfile that leaves here goes through this, production and probe
-# alike. The probe is the one that had been skipping it -- see #7 -- and it is
-# the one that runs on the same 3 USD/h machine, so it has the most to lose
-# from a setting nobody looked at.
+# alike.
 check_parfile() {
   TARGET="$1"
 
@@ -192,39 +218,69 @@ check_parfile() {
     "not set to ${CADENCE_HOURS} -- the rewrite did not take"
   assert "checkpoint_ID" \
     "^[[:space:]]*${P}::checkpoint_ID[[:space:]]*=[[:space:]]*\"?yes\"?[[:space:]]*\$" \
-    "not \"yes\" -- every interruption would re-import the FUKA data"
-  assert "Cactus::cctk_final_time" \
-    "^[[:space:]]*Cactus::cctk_final_time[[:space:]]*=[[:space:]]*${FINAL_TIME}([[:space:]]|\$)" \
-    "not ${FINAL_TIME} -- the end point rewrite did not take"
-  assert "recover" \
-    "^[[:space:]]*${P}::recover[[:space:]]*=[[:space:]]*\"?autoprobe\"?[[:space:]]*\$" \
-    "not \"autoprobe\" -- a relaunched node would start from scratch"
+    "not \"yes\" -- every interruption would re-import the LORENE data"
   assert "checkpoint_keep" \
     "^[[:space:]]*${P}::checkpoint_keep[[:space:]]*=[[:space:]]*[2-9][0-9]*[[:space:]]*\$" \
     "below 2 -- no local fallback if the newest checkpoint is unreadable"
+  assert "checkpoint_dir" \
+    "^[[:space:]]*${P}::checkpoint_dir[[:space:]]*=[[:space:]]*\"\.\./CHECKPOINTS\"[[:space:]]*\$" \
+    "not \"../CHECKPOINTS\" -- the sidecar would treat checkpoints as output"
+  assert "recover_dir" \
+    "^[[:space:]]*${P}::recover_dir[[:space:]]*=[[:space:]]*\"\.\./CHECKPOINTS\"[[:space:]]*\$" \
+    "not \"../CHECKPOINTS\" -- a relaunched node would not find the restored set"
+  assert "recover" \
+    "^[[:space:]]*${P}::recover[[:space:]]*=[[:space:]]*\"?autoprobe\"?[[:space:]]*\$" \
+    "not \"autoprobe\" -- a relaunched node would start from scratch"
+  assert "Cactus::cctk_final_time" \
+    "^[[:space:]]*Cactus::cctk_final_time[[:space:]]*=[[:space:]]*${FINAL_TIME}([[:space:]]|\$)" \
+    "not ${FINAL_TIME} -- the end point rewrite did not take"
+  assert "TerminationTrigger::max_walltime" \
+    "^[[:space:]]*TerminationTrigger::max_walltime[[:space:]]*=[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*(#.*)?\$" \
+    "not numeric -- Cactus refuses the simfactory placeholder"
+  # Two of these would be a parameter set twice, which Cactus refuses at
+  # start-up, and the run would die after the boot rather than during this
+  # check.
+  for key in checkpoint_every_walltime_hours checkpoint_keep checkpoint_ID checkpoint_dir recover_dir; do
+    if [ "$(grep -cE "^[[:space:]]*${P}::${key}[[:space:]]*=" "${TARGET}")" -ne 1 ]; then
+      printf '  %-34s FAIL %s\n' "${key}" "set more than once"
+      status=1
+    fi
+  done
 
-  # The parfile names the FUKA .info file by absolute path, and the gallery
-  # ships the same /path/to/ placeholder there as inside the .info itself. The
-  # node rewrites the directory at boot, so the path here does not matter --
-  # but the basename does, because that is the file the node then looks for
-  # among the ones this script uploads. A parfile naming an .info that is not
-  # in the initial data set produces a Kadath import error a whole boot later.
+  # HTTPD must be gone entirely, thorn and parameters alike.
+  if grep -qE '^[[:space:]]*[^#[:space:]].*HTTPD' "${TARGET}"; then
+    printf '  %-34s FAIL %s\n' "HTTPD" \
+      "still present -- the thorn segfaults in the container without a socket"
+    status=1
+  else
+    printf '  %-34s OK   %s\n' "HTTPD" "dropped (no ingress to serve, and it crashes without a socket)"
+  fi
+
+  # The parfile names the LORENE data set by absolute path -- whatever
+  # machine the gallery example was last run from. The node rewrites the
+  # directory at boot, so the path here does not matter, but the basename
+  # does, because that is the file the node then looks for among the ones
+  # this script uploads.
   local in_par basename
   in_par="$(sed -nE \
-    's|^[[:space:]]*kadathimporter::filename[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|Ip' \
+    's|^[[:space:]]*meudon_bin_ns::filename[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|Ip' \
     "${TARGET}" | head -1)"
   basename="${in_par##*/}"
 
   if [ -z "${basename}" ]; then
-    printf '  %-34s FAIL %s\n' "kadathimporter::filename" \
+    printf '  %-34s FAIL %s\n' "Meudon_Bin_NS::filename" \
       "absent -- the run would have no initial data to import"
     status=1
-  elif [ ! -f "${SRC_DIR}/${ID_DIR}/${basename}" ]; then
-    printf '  %-34s FAIL %s\n' "kadathimporter::filename" \
-      "names ${basename}, which is not in ${SRC_DIR}/${ID_DIR}/"
+  elif [ "${basename}" != "${ID_NAME}" ]; then
+    printf '  %-34s FAIL %s\n' "Meudon_Bin_NS::filename" \
+      "names ${basename}, but the fetched data set is ${ID_NAME}"
+    status=1
+  elif [ ! -f "${SRC_DIR}/${basename}" ]; then
+    printf '  %-34s FAIL %s\n' "Meudon_Bin_NS::filename" \
+      "names ${basename}, which is not in ${SRC_DIR}/"
     status=1
   else
-    printf '  %-34s OK   %s\n' "kadathimporter::filename" \
+    printf '  %-34s OK   %s\n' "Meudon_Bin_NS::filename" \
       "${basename} (the node rewrites the directory at boot)"
   fi
 }
@@ -276,13 +332,10 @@ if [ -n "${PROBE_MINUTES}" ]; then
   TARGET="${PROBE_OUT}"
   assert "Cactus::terminate" \
     "^[[:space:]]*Cactus::terminate[[:space:]]*=[[:space:]]*\"runtime\"[[:space:]]*\$" \
-    "not \"runtime\" -- the probe would run to t = 2000 M at 3 USD/h"
+    "not \"runtime\" -- the probe would run to t = ${FINAL_TIME} on a billing node"
   assert "Cactus::max_runtime" \
     "^[[:space:]]*Cactus::max_runtime[[:space:]]*=[[:space:]]*${PROBE_MINUTES}[[:space:]]*\$" \
     "not ${PROBE_MINUTES} -- a zero or absent cap never fires"
-  # Belt and braces: two of these would be a parameter set twice, which Cactus
-  # refuses at start-up, and the run would die after the boot rather than
-  # during this check.
   if [ "$(grep -cE '^[[:space:]]*Cactus::max_runtime[[:space:]]*=' "${PROBE_OUT}")" -ne 1 ]; then
     printf '  %-34s FAIL %s\n' "Cactus::max_runtime" "set more than once"
     status=1
@@ -300,14 +353,18 @@ fi
 # Ask Cactus itself
 #
 # The greps above check the settings this script knows about. Cactus knows
-# about all of them, and --exit-after-param-check makes it say so in about
-# forty seconds without touching the initial data -- a misspelled parameter,
+# about all of them, and --exit-after-param-check makes it say so in well
+# under a minute without touching the initial data -- a misspelled parameter,
 # a value outside its range, or a parameter set twice all abort here rather
-# than after a five minute boot on a machine billing at 3 USD/h.
+# than after a boot on a billing machine.
 #
 # Skipped rather than fatal when the image is not on this machine: the parfile
 # is still checked by everything above, and refusing to upload because a
-# 4 GB container image is missing would be its own kind of failure.
+# container image is missing would be its own kind of failure.
+#
+# The image has to be the BNS build, which carries NSTracker. The GW230529
+# image compiles every other thorn this parfile activates but not that one,
+# and the check fails on thorn activation against it.
 # --------------------------------------------------------------------
 LOCAL_IMAGE="${LOCAL_IMAGE:-bns-et:local}"
 
@@ -362,15 +419,12 @@ aws s3 cp "${OUT}" "s3://${BUCKET}/inputs/${PARFILE}"
 if [ -n "${PROBE_OUT}" ]; then
   aws s3 cp "${PROBE_OUT}" "s3://${BUCKET}/inputs/${PROBE_PARFILE}"
 fi
-aws s3 cp "${SRC_DIR}/${ID_DIR}/" "s3://${BUCKET}/inputs/" \
-  --recursive --exclude '*' \
-  --include '*.info' --include '*.dat' --include 'gam2.polytrope'
+aws s3 cp "${SRC_DIR}/${ID_NAME}" "s3://${BUCKET}/inputs/${ID_NAME}"
 
 echo ""
-echo "Done. Both /path/to/ placeholders -- the eosfile inside the .info and the"
-echo "initial data path in the parfile -- are still in the uploaded copies, and"
-echo "are meant to be: the node rewrites them onto its own mount point at boot"
-echo "and aborts if either rewrite does not take."
+echo "Done. The absolute path to the LORENE data set inside the uploaded"
+echo "parfile is still the gallery's, and is meant to be: the node rewrites it"
+echo "onto its own mount point at boot and aborts if the rewrite does not take."
 
 if [ -n "${PROBE_OUT}" ]; then
   echo ""
