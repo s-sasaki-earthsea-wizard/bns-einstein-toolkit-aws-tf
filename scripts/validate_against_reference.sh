@@ -7,52 +7,58 @@
 #
 # WHY THIS IS POSSIBLE AT ALL
 #
-# The gallery ships the reference run bhns_20252103 -- the same dx = 19.2
-# configuration, evolved to t = 3051 M on COSMA8 -- and its stdout carries the
-# CarpetIOBasic info line every 4 iterations, in exactly the format our own
-# cactus-stdout.log uses. So the comparison needs no extra output from the
-# run, no extra compute, and no credentials beyond the read-only observer
-# profile. Fetch it with:
+# The gallery ships the results of its own run of this parfile --
+# bns-20260604.tar.gz, evolved to t = 2500 on Teton (INL) -- and its stdout
+# carries the CarpetIOBasic info line every iteration, in exactly the format
+# our own cactus-stdout.log uses. So the comparison needs no extra output
+# from the run, no extra compute, and no credentials beyond the read-only
+# observer profile. Fetch it with:
 #
 #   make fetch-inputs ARGS=--reference
 #
 # WHY THERE ARE NO THRESHOLDS HERE
 #
-# "Is H max above 1e-3?" has no answer: the healthy value moves by four orders
+# "Is H max above 1e-3?" has no answer: the healthy value moves by an order
 # of magnitude over a run. "Is H max near what the reference had at this same
-# t?" does, and the reference supplies the scale, so nothing has to be
-# invented. Physics that legitimately changes -- the density spike at merger --
-# changes in both and cancels in the comparison.
+# iteration?" does, and the reference supplies the scale, so nothing has to
+# be invented. Physics that legitimately changes -- the density rise at
+# merger -- changes in both and cancels in the comparison.
 #
 # This script therefore reports and never judges. Nothing here stops a run.
 # The one automatic stop in the project is NaNChecker inside Cactus, which
 # needs no threshold because a NaN is not a matter of degree.
 #
-# WHAT AGREEMENT LOOKS LIKE, MEASURED
+# WHAT IS COMPARED
 #
-# Over the 556 overlapping iterations of the 2026-08-21 throughput probe
-# (t = 0-133 M, pure inspiral):
+# The five quantities on the BNS info line, all reductions:
 #
-#   ILLINOISGRMHD::rho_b   max   relative difference 0 -- all printed digits
-#   ML_ADMCONSTRAINTS::H   max   0
-#   ML_ADMCONSTRAINTS::H   min   median 0, max 1.3e-3
-#   HYDROBASE::w_lorentz   max   median 1.2e-3, max 1.5e-2
+#   GRHYDRO::dens          sum    the rest mass on the grid -- conserved up
+#                                 to atmosphere and outflow, so the tightest
+#                                 yardstick of the five
+#   GRHYDRO::dens          max
+#   HYDROBASE::rho         max    the central density; the merger shows up
+#                                 here as a step at t ~ 1750
+#   HYDROBASE::w_lorentz   max    sits in the artificial atmosphere, so it
+#                                 is the loosest of the five
+#   ML_ADMCONSTRAINTS::H   max
 #
-# Two runs on different hardware with different rank counts agreeing to the
-# printed digits is not luck: these are min/max reductions, and a maximum does
-# not depend on the order it was reduced in. The quantities that would drift
-# with decomposition are sums, and none are on this line. w_lorentz is looser
-# because its maximum sits in the artificial atmosphere, where tiny
-# differences are amplified.
+# A maximum does not depend on the order it was reduced in, so two runs on
+# different hardware with different rank counts can agree to the printed
+# digits; the sum is decomposition-sensitive at the level of roundoff. What
+# agreement actually looks like for this parfile is NOT measured yet -- the
+# GW230529 project saw its max reductions agree to every printed digit over
+# 556 iterations of inspiral, and there is no reason to expect worse here,
+# but the number belongs to the first probe, not to this comment.
 #
 # THE LIMIT WORTH STATING
 #
-# That measurement covers pure inspiral. Past the merger at t ~ 713 M the two
-# runs will genuinely diverge -- roundoff differences grow fastest exactly
-# where the dynamics are most nonlinear, and the remnant disc is turbulent. A
-# widening band there is expected and is not a fault. That is the second
-# reason this script does not abort: any fixed rule would be wrong on one side
-# of the merger.
+# Past the merger at t ~ 1750 (rho max steps up at t = 1751 in the reference;
+# the Psi4 amplitude at r = 300 peaks at t = 2059) the two runs will
+# genuinely diverge -- roundoff differences grow fastest where the dynamics
+# are most nonlinear, and the remnant is a differentially rotating
+# hypermassive star. A widening band there is expected and is not a fault.
+# That is the second reason this script does not abort: any fixed rule would
+# be wrong on one side of the merger.
 #
 # Read it as change detection. The band each quantity has been living in is
 # printed alongside the most recent window, so a departure shows up as the
@@ -65,7 +71,7 @@
 #   With no log argument the current run log is fetched from the bucket.
 #
 # Options:
-#   --reference FILE   reference run stdout (default upstream/bhns_20252103/…)
+#   --reference FILE   reference run stdout (default upstream/results/bns-1905387.out)
 #   --recent N         samples in the recent window (default 64)
 #
 # Examples:
@@ -80,7 +86,7 @@ REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 TF="${TF:-terraform}"
 SRC_DIR="${INPUTS_DIR:-upstream}"
 
-REFERENCE="${SRC_DIR}/bhns_20252103/bhns_bns.out"
+REFERENCE="${SRC_DIR}/results/bns-1905387.out"
 RECENT=64
 SOURCE=""
 
@@ -100,10 +106,8 @@ if [ ! -f "${REFERENCE}" ]; then
   echo "no reference run log at ${REFERENCE}" >&2
   echo "" >&2
   echo "Fetch it with:  make fetch-inputs ARGS=--reference" >&2
-  echo "It is 573 MB for a 4.5 MB file, so it is not fetched by default." >&2
-  echo "If the simulation repository is checked out beside this one, copying" >&2
-  echo "its upstream/bhns_20252103.tar.gz into ${SRC_DIR}/ first skips the" >&2
-  echo "download." >&2
+  echo "It is an 88 MB tarball for a 20 MB log, so it is not fetched by default." >&2
+  echo "A copy of bns-20260604.tar.gz already in ${SRC_DIR}/ skips the download." >&2
   exit 1
 fi
 
@@ -146,25 +150,29 @@ echo ""
 awk -v recent="${RECENT}" '
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 
-# One CarpetIOBasic info line -> iteration, physical time, and the four
-# extrema worth comparing. Returns 0 for anything else, including the two
+# One CarpetIOBasic info line -> iteration, physical time, and the five
+# reductions worth comparing. Returns 0 for anything else, including the two
 # header rows, whose first field is not numeric.
 #
-# rho_b minimum and w_lorentz minimum are deliberately skipped: both sit
-# pinned at their floor (1e-10 and 1.0) for the whole run and carry no signal.
+# The line, as this parfile prints it (IOBasic::outInfo_vars):
+#
+#   <it> <t> | <M/h> | <dens sum> <dens max> | <rho max> | <w_lorentz max> | <H max> | <maxrss>
+#
+# maxrss is skipped: it is a property of the machine, not of the physics.
 function parse(line,   nf, f, head, h2) {
   if (index(line, "|") == 0) return 0
   nf = split(line, f, "|")
-  if (nf < 5) return 0
+  if (nf < 7) return 0
   head = trim(f[1])
   if (split(head, h2, /[ \t]+/) != 2) return 0
   if (h2[1] !~ /^[0-9]+$/) return 0
   if (h2[2] !~ /^[0-9]+(\.[0-9]+)?$/) return 0
   P_it = h2[1] + 0
   P_t  = h2[2] + 0
-  split(trim(f[3]), wl, /[ \t]+/); P_v[1] = wl[2] + 0
-  split(trim(f[4]), rb, /[ \t]+/); P_v[2] = rb[2] + 0
-  split(trim(f[5]), hc, /[ \t]+/); P_v[3] = hc[1] + 0; P_v[4] = hc[2] + 0
+  split(trim(f[3]), ds, /[ \t]+/); P_v[1] = ds[1] + 0; P_v[2] = ds[2] + 0
+  split(trim(f[4]), rb, /[ \t]+/); P_v[3] = rb[1] + 0
+  split(trim(f[5]), wl, /[ \t]+/); P_v[4] = wl[1] + 0
+  split(trim(f[6]), hc, /[ \t]+/); P_v[5] = hc[1] + 0
   return 1
 }
 
@@ -176,9 +184,9 @@ function strip(line) {
 }
 
 BEGIN {
-  name[1] = "w_lorentz max"; name[2] = "rho_b     max"
-  name[3] = "H         min"; name[4] = "H         max"
-  nq = 4
+  name[1] = "dens      sum"; name[2] = "dens      max"; name[3] = "rho       max"
+  name[4] = "w_lorentz max"; name[5] = "H         max"
+  nq = 5
 }
 
 # ---- the reference ----
@@ -209,9 +217,9 @@ END {
     for (j = i + 1; j <= n; j++)
       if (order[j] < order[i]) { t = order[i]; order[i] = order[j]; order[j] = t }
 
-  # Overlap only. The run can be ahead of nothing -- the reference goes to
-  # t = 3051 M, past any end point this project will pick -- but it can be
-  # behind, and early iterations exist in both.
+  # Overlap only. The reference goes to t = 2500, which is also the default
+  # end point here, so the run can be behind it but not ahead of it unless
+  # CCTK_FINAL_TIME was raised; early iterations exist in both.
   m = 0
   for (i = 1; i <= n; i++) if (order[i] in refseen) { m++; ov[m] = order[i] }
 
@@ -288,10 +296,10 @@ END {
           name[q], recmed[q], basemax[q], worst_it[q]
     print ""
     print "  That is a statement about the samples, not a verdict. Past the"
-    print "  merger at t ~ 713 M the two runs diverge for reasons that are not"
+    print "  merger at t ~ 1750 the two runs diverge for reasons that are not"
     print "  faults -- roundoff differences grow where the dynamics are"
-    print "  nonlinear, and the remnant disc is turbulent. Before t ~ 713 M"
-    print "  there is no such excuse and it is worth looking at."
+    print "  nonlinear, and the remnant is a hypermassive star. Before"
+    print "  t ~ 1750 there is no such excuse and it is worth looking at."
   }
 }
 ' "${REFERENCE}" "${LOG}"

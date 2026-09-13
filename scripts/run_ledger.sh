@@ -61,7 +61,7 @@
 # Examples:
 #   scripts/run_ledger.sh
 #   AWS_PROFILE=bns-observer scripts/run_ledger.sh
-#   scripts/run_ledger.sh s3://bns-data-earthsea/logs/prod-dx19p2-1750m/
+#   scripts/run_ledger.sh s3://bns-data-CHANGEME/logs/prod-dx8-2500m/
 
 set -euo pipefail
 

@@ -55,8 +55,8 @@
 #
 # Options:
 #   --skip-minutes N   discard the first N minutes of evolution (default 15)
-#   --target-time M    physical time to project to, in M (default 1750)
-#   --usd-per-hour X   spot price used for the projection (default 2.978)
+#   --target-time M    physical time to project to, in M_sun (default 2500)
+#   --usd-per-hour X   spot price used for the projection (default 1.950)
 #   --window-from IT   start the window at iteration IT instead of by time
 #   --gap-minutes N    wall clock gap that separates two runs (default 10)
 #   --segment WHICH    which run in the log to measure: a number, "last"
@@ -74,17 +74,19 @@ REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 TF="${TF:-terraform}"
 
 SKIP_MINUTES=15
-# The production end point, decided 2026-08-27 (see upload_inputs.sh for the
-# physics). Override with --target-time for another one.
-TARGET_TIME=1750
-# us-west-2d, c7a.48xlarge, measured 2026-08-21. Override for another zone or
-# a different instance type -- the projection is linear in it.
-USD_PER_HOUR=2.978
+# The gallery end point: merger at t ~ 1750 and the hypermassive remnant for
+# ~750 more. Override with --target-time for another one.
+TARGET_TIME=2500
+# c7a.24xlarge in us-west-2d, the 2026-08-20 price check. Not measured for
+# this project yet; override for another zone or instance type -- the
+# projection is linear in it.
+USD_PER_HOUR=1.950
 WINDOW_FROM=""
 # A gap longer than this, and far longer than the loop's own scale, means the
 # node was not running. Ten minutes clears every legitimate pause by an order
-# of magnitude: the 85.7 GB checkpoint write stops every rank for about 76
-# seconds, and the worst non-checkpoint stall measured is 91.
+# of magnitude: the GW230529 run's 85.7 GB checkpoint write stopped every
+# rank for about 76 seconds, and its worst non-checkpoint stall was 91; a
+# BNS checkpoint is expected to be about half that size.
 GAP_MINUTES=10
 SEGMENT=last
 SOURCE=""
@@ -177,7 +179,8 @@ function hms(sec,   h, m) {
 }
 
 BEGIN {
-  n = 0; stamped = 0; unstamped = 0; import_total = 0; import_levels = 0
+  n = 0; stamped = 0; unstamped = 0; import_levels = 0
+  import_start = -1; import_end = -1
   nckpt = 0
 }
 
@@ -193,13 +196,14 @@ BEGIN {
     unstamped++
   }
 
-  # Initial data. One "Filling took" per refinement level; the sum is what an
-  # interruption costs when IO::checkpoint_ID is not set.
-  if (line ~ /KadathImporter.*Filling took/) {
-    split(line, ft, "Filling took")
-    import_total += ft[2] + 0
-    import_levels++
-  }
+  # Initial data. Meudon_Bin_NS reads the LORENE data set once per
+  # refinement level and prints no timing of its own, so the duration is the
+  # wall clock between its first and last message -- available only on a
+  # stamped log. That span is what an interruption costs when
+  # IO::checkpoint_ID is not set.
+  if (line ~ /Meudon_Bin_NS\): Setting up LORENE Bin_NS initial data/ && import_start < 0) import_start = ts
+  if (line ~ /Meudon_Bin_NS\): Reading from file/) import_levels++
+  if (line ~ /Meudon_Bin_NS\): Done\./) import_end = ts
 
   if (line ~ /Dumping .* checkpoint at iteration/) {
     nckpt++
@@ -231,7 +235,7 @@ END {
     print "A memory probe or a run that died during the initial data import"
     print "will look like this."
     if (import_levels > 0)
-      printf "initial data   %d levels, %.1f s total\n", import_levels, import_total
+      printf "initial data   %d levels imported (LORENE)\n", import_levels
     exit 3
   }
 
@@ -288,11 +292,13 @@ END {
   }
 
   # ---------------- initial data ----------------
-  if (import_levels > 0)
-    printf "initial data   %d levels imported, %.0f s (%.1f min) total\n", \
-      import_levels, import_total, import_total / 60
+  if (import_levels > 0 && import_start > 0 && import_end > import_start)
+    printf "initial data   %d levels imported (LORENE), %.0f s (%.1f min) wall clock\n", \
+      import_levels, import_end - import_start, (import_end - import_start) / 60
+  else if (import_levels > 0)
+    printf "initial data   %d levels imported (LORENE); no stamps, so no duration\n", import_levels
   else
-    print  "initial data   no Kadath import in this log (recovered from a checkpoint)"
+    print  "initial data   no LORENE import in this log (recovered from a checkpoint)"
 
   # ---------------- evolution extent ----------------
   dt = (pt[n] - pt[1]) / (it[n] - it[1])
@@ -484,5 +490,8 @@ END {
   print ""
   print "Add the initial data import once, and whatever the merger costs above"
   print "the inspiral -- this projection is linear in a rate measured before it."
+  print "The gallery run got FASTER after its merger at t ~ 1750 (15.8 -> 13.5"
+  print "s per M on Teton) as the two star boxes gave way to one at the origin;"
+  print "the Trigger adds an eighth level there only if the remnant collapses."
 }
 ' "${LOG}"
